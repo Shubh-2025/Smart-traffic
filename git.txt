@@ -1,8 +1,8 @@
 Create or change Branch
-    1. git checkout -b Dilraj 
+    1. git checkout -b dilraj 
     // this makes a new branch as Dilraj and sets it to current.
 
-    2. git checkout Dilraj
+    2. git checkout dilraj
     // this shifts your current branch to the given name.
 
 Before Coding always use
@@ -12,4 +12,4 @@ How to push code in repo (from a branch not main branch)
     
     git add . 
     git commit -m "custom commit messages"
-    git push origin Dilraj
+    git push origin dilraj
