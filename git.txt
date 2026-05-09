@@ -1,0 +1,15 @@
+Create or change Branch
+    1. git checkout -b Dilraj 
+    // this makes a new branch as Dilraj and sets it to current.
+
+    2. git checkout Dilraj
+    // this shifts your current branch to the given name.
+
+Before Coding always use
+    git pull origin main (must do).
+
+How to push code in repo (from a branch not main branch)
+    
+    git add . 
+    git commit -m "custom commit messages"
+    git push origin Dilraj
