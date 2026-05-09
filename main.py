@@ -1,226 +1,162 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 """
-Created on Sat May  9 11:54:47 2026
+main.py — Smart Traffic System with Ambulance Siren Detection
+=============================================================
+Entry point. Orchestrates all modules.
 
-@author: samra
+Usage:
+    python main.py                        # UDP audio from phones (default)
+    python main.py --audio-mode http      # IP Webcam HTTP stream
+    python main.py --audio-mode device    # USB audio adapters
+    python main.py --audio-mode simulate  # No phones needed (testing)
+    python main.py --list-devices         # Show sounddevice indices
 """
+
+import argparse
+import os
+import random
+import sys
+import time
 
 import cv2
-import json
-import time
-import torch
-import random
-import numpy as np
-import paho.mqtt.client as mqtt
-from ultralytics import YOLO
-import os
 
-# -------- MQTT CONFIG ----------
-MQTT_HOST = "bf10fe86ca344f07b38ce2444db2e9c0.s1.eu.hivemq.cloud"
-MQTT_PORT = 8883
-MQTT_USER = "Dilraj135"
-MQTT_PASS = "Dilraj@123"
+# Suppress TF logs before any TF import happens (via utils/yamnet.py)
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"]  = "3"
 
-TOPIC_CONTROL = "traffic/control"
-TOPIC_COUNT_FMT = "traffic/vehicle_count/side{}"
-
-# -------- IMAGE POOL (10 IMAGES) ----------
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-ALL_IMAGES = [
-    os.path.join(BASE_DIR, "images/", "1.jpeg"),
-    os.path.join(BASE_DIR, "images/", "2.jpeg"),
-    os.path.join(BASE_DIR, "images/", "3.jpeg"),
-    os.path.join(BASE_DIR, "images/", "4.jpeg"),
-    os.path.join(BASE_DIR, "images/", "5.jpeg"),
-    os.path.join(BASE_DIR, "images/", "6.jpeg"),
-    os.path.join(BASE_DIR, "images/", "7.jpeg"),
-    os.path.join(BASE_DIR, "images/", "8.jpeg"),
-    os.path.join(BASE_DIR, "images/", "9.jpeg"),
-    os.path.join(BASE_DIR, "images/", "10.jpeg"),
-]
+from config import ALL_IMAGES
+from audio.listeners import SideListener
+from traffic.detector import VehicleDetector
+from traffic.controller import SignalController
+from utils.yamnet import load_yamnet
+from utils.mqtt_pub import MQTTPublisher
 
 
-# Random initial 4 images
-selected = random.sample(ALL_IMAGES, 4)
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-IMAGES = {
-    1: selected[0],
-    2: selected[1],
-    3: selected[2],
-    4: selected[3],
-}
+def print_status(counts: dict, decision: dict):
+    sides      = decision["scores"]
+    siren_sides = decision["siren_sides"]
+    print("\n  ┌─ CYCLE DECISION ──────────────────────────────")
+    for s in range(1, 5):
+        siren_tag = "  🚨 SIREN" if s in siren_sides else ""
+        print(f"  │ Side {s}: vehicles={counts[s]:>2}  score={sides[s]:>8.2f}{siren_tag}")
+    print(f"  ├────────────────────────────────────────────")
+    print(f"  │ ✅ GREEN  → Side {decision['open_side']}")
+    print(f"  │ ⏱ Time   → {decision['green_time']} sec")
+    if siren_sides:
+        print(f"  │ 🚨 SIREN OVERRIDE → Sides {siren_sides}")
+    print(f"  └────────────────────────────────────────────\n")
 
-VEHICLE_CLASSES = [2, 3, 5, 7]  # car, motorcycle, bus, truck
 
-# -------- MQTT CONNECT ----------
-client = mqtt.Client()
-client.username_pw_set(MQTT_USER, MQTT_PASS)
-client.tls_set()
-client.tls_insecure_set(True)
-client.connect(MQTT_HOST, MQTT_PORT)
-
-# -------- YOLO MODEL ----------
-# =========================================================
-# DEVICE SETUP
-# =========================================================
-
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-print(f"\n🚀 Using Device: {DEVICE}")
-
-# =========================================================
-# LOAD YOLO26x MODEL
-# =========================================================
-
-MODEL_NAME = "yolov8l.pt"
-# MODEL_NAME = "yolo26x.pt"
-
-model = YOLO(MODEL_NAME)
-
-model.to(DEVICE)
-
-print(f"✅ Model Loaded: {MODEL_NAME}")
-# -------- VEHICLE COUNT ----------
-def count_vehicles(image_path):
-    img = cv2.imread(image_path)
-    if img is None:
-        print("Image missing:", image_path)
-        return 0
-
-    results = model(img)[0]
-    count = 0
-
-    for box in results.boxes:
-        cls = int(box.cls[0])
-        if cls in VEHICLE_CLASSES:
-            count += 1
-
-    return count
-
-# -------- VISUALIZATION ----------
-def visualize_all_sides(counts):
-    imgs = []
-
-    for side, image_path in IMAGES.items():
-        img = cv2.imread(image_path)
-        results = model(img)[0]
-
-        for box in results.boxes:
-            cls = int(box.cls[0])
-            if cls in VEHICLE_CLASSES:
-                x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
-                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-        text = f"Side {side}: {counts[side]} vehicles"
-        cv2.putText(img, text, (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-        img = cv2.resize(img, (500, 300))
-        imgs.append(img)
-
-    top = np.hstack((imgs[0], imgs[1]))
-    bottom = np.hstack((imgs[2], imgs[3]))
-    final_frame = np.vstack((top, bottom))
-
-    cv2.imshow("Smart Traffic System - 4 Sides", final_frame)
-    cv2.waitKey(1)
-
-# -------- IMAGE ROTATION ----------
-def update_images_after_green(best_side):
-    used = set(IMAGES.values())
+def update_images(images: dict, green_side: int) -> dict:
+    """Rotate the image for the side that just had green (original logic)."""
+    used      = set(images.values())
     available = list(set(ALL_IMAGES) - used)
-
     if available:
-        IMAGES[best_side] = random.choice(available)
+        images[green_side] = random.choice(available)
+    return images
 
-# -------- MAIN LOGIC ----------
-counts = {}
-wait_time = {1: 0, 2: 0, 3: 0, 4: 0}
-smoothed = {1: 0, 2: 0, 3: 0, 4: 0}
-consecutive_wins = {1: 0, 2: 0, 3: 0, 4: 0}
 
-MIN_GREEN = 5
-MAX_GREEN = 25
-FACTOR = 0.1
-ALPHA = 0.5
-WEIGHT_TRAFFIC = 1.0
-WEIGHT_WAIT = 2.5
-MAX_CONSECUTIVE = 2
+# ── Main loop ─────────────────────────────────────────────────────────────────
 
-print("\n🚦 Smart Traffic System Started (Infinite Loop)\n")
+def run(audio_mode: str):
+    # Initial random 4 images (unchanged from original)
+    images = {i + 1: p for i, p in enumerate(random.sample(ALL_IMAGES, 4))}
 
-try:
-    while True:
-        counts.clear()
+    # Load shared YAMNet model once
+    yamnet_model, class_names, siren_indices = load_yamnet()
 
-        print("\n--- New Traffic Cycle ---")
+    # Start 4 siren listeners (one per road side)
+    listeners = {}
+    for side in range(1, 5):
+        l = SideListener(side, yamnet_model, class_names, siren_indices, audio_mode)
+        l.start()
+        listeners[side] = l
 
-        # Step 1: Detect vehicles
-        for side, image in IMAGES.items():
-            c = count_vehicles(image)
-            counts[side] = c
-            print(f"Side {side} = {c} vehicles")
-            client.publish(TOPIC_COUNT_FMT.format(side), str(c))
-            client.loop()
+    detector   = VehicleDetector()
+    controller = SignalController()
+    publisher  = MQTTPublisher()
 
-        # Step 2: EWMA + waiting
-        for s in range(1, 5):
-            smoothed[s] = ALPHA * counts[s] + (1 - ALPHA) * smoothed[s]
-            wait_time[s] += 1
+    print("\n🚦 Smart Traffic System Running  (Ctrl-C to stop)\n")
 
-        # Step 3: Priority score
-        scores = {}
-        for s in range(1, 5):
-            scores[s] = smoothed[s] * WEIGHT_TRAFFIC + wait_time[s] * WEIGHT_WAIT
-            if consecutive_wins[s] >= MAX_CONSECUTIVE:
-                scores[s] *= 0.6
+    try:
+        while True:
+            print("\n─── New Cycle ──────────────────────────────────────")
 
-        # Step 4: Choose green side
-        best_side = max(scores, key=scores.get)
+            # 1. Count vehicles
+            counts = {}
+            for side, path in images.items():
+                counts[side] = detector.count(path)
+                print(f"  Side {side}: {counts[side]} vehicles")
 
-        # Step 5: Green time
-        green_time = min(
-            MAX_GREEN,
-            max(MIN_GREEN, int(MIN_GREEN + smoothed[best_side] * FACTOR))
-        )
+            publisher.publish_counts(counts)
 
-        # Step 6: Update cycle stats
-        for s in range(1, 5):
-            if s == best_side:
-                consecutive_wins[s] += 1
-                wait_time[s] = 0
-            else:
-                consecutive_wins[s] = 0
+            # 2. Publish siren status
+            for side, l in listeners.items():
+                publisher.publish_siren(side, l.siren_score, l.siren_active)
 
-        # Step 7: Publish MQTT
-        payload = {
-            "open_side": best_side,
-            "green_time": green_time
-        }
-        client.publish(TOPIC_CONTROL, json.dumps(payload))
-        client.loop()
+            # 3. Signal decision
+            decision = controller.decide(counts, listeners)
 
-        # Status output
-        print("\n--- SMART DECISION ---")
-        for s in range(1, 5):
-            print(f"Side {s}: Count={counts[s]}, Wait={wait_time[s]}, Score={scores[s]:.2f}")
-        print(f"✅ Green Side → {best_side}")
-        print(f"⏱ Green Time → {green_time} sec")
+            # 4. Publish control to ESP32
+            publisher.publish_control(decision)
 
-        # Step 8: Visualization
-        visualize_all_sides(counts)
+            # 5. Print status
+            print_status(counts, decision)
 
-        # Step 9: Green wait
-        time.sleep(green_time)
+            # 6. Visualize
+            detector.visualize(images, counts, decision["siren_sides"])
 
-        # Step 10: Rotate only green side image
-        update_images_after_green(best_side)
+            # 7. Green phase
+            time.sleep(decision["green_time"])
 
-        time.sleep(2)
+            # 8. Rotate image for the green side
+            images = update_images(images, decision["open_side"])
 
-except KeyboardInterrupt:
-    print("\n🛑 Traffic system stopped manually")
-    cv2.destroyAllWindows()
-    client.disconnect()
+            time.sleep(2)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping ...")
+    finally:
+        for l in listeners.values():
+            l.stop()
+        cv2.destroyAllWindows()
+        publisher.disconnect()
+        print("[SYSTEM] Stopped cleanly.")
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+def main():
+    p = argparse.ArgumentParser(
+        description="Smart Traffic + Siren Detection",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    p.add_argument(
+        "--audio-mode", default="udp",
+        choices=["udp", "http", "device", "simulate"],
+        help=(
+            "udp      — phones send raw PCM16 UDP (recommended)\n"
+            "http     — IP Webcam HTTP stream\n"
+            "device   — USB audio adapters\n"
+            "simulate — fake audio, no phones needed\n"
+        ),
+    )
+    p.add_argument("--list-devices", action="store_true",
+                   help="List sounddevice input devices and exit.")
+    args = p.parse_args()
+
+    if args.list_devices:
+        try:
+            import sounddevice as sd
+            print(sd.query_devices())
+        except ImportError:
+            print("sounddevice not installed.")
+        return
+
+    run(args.audio_mode)
+
+
+if __name__ == "__main__":
+    main()
