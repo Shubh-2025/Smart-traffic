@@ -245,5 +245,5 @@ The simulate mode randomly injects siren-like tones (~4% chance per audio chunk 
 
 ## 👤 Author
 
-**Dilraj** **Shubhranil** — Smart Traffic Prototype Project  
+**Dilraj** **&** **Shubhranil** — Smart Traffic Prototype Project  
 HiveMQ Cloud · ESP32 · YOLOv8 · YAMNet
