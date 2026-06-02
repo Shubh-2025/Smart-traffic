@@ -13,6 +13,7 @@ import logging
 import socket
 import threading
 import time
+import webbrowser
 from collections import defaultdict
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -272,6 +273,15 @@ def start_ws_server(base_dir: str):
     print(f"  🖥  Manager dash  →  http://{ip}:{MANAGER_HTTP_PORT}")
     print(f"  🔌 WebSocket     →  ws://{ip}:{WS_PORT}")
     print("═" * 60 + "\n")
+
+    # Auto-open manager dashboard in default browser after server starts
+    def _open_browser():
+        time.sleep(2)
+        url = f"http://localhost:{MANAGER_HTTP_PORT}"
+        print(f"[SYSTEM] Opening dashboard -> {url}")
+        webbrowser.open(url)
+
+    threading.Thread(target=_open_browser, daemon=True).start()
 
 
 async def _serve(base_dir: str):
