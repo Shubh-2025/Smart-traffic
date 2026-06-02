@@ -1,221 +1,138 @@
-# audio/listeners.py — Per-side audio capture + siren detection
+# audio/listeners.py — Per-side YAMNet siren detection
 #
-# Each SideListener runs two daemon threads:
-#   1. _receive_loop  — grabs audio from phone (UDP / HTTP / device / simulate)
-#   2. _inference_loop — runs YAMNet; updates .siren_active / .siren_score
-#
-# ALL network/IO errors are caught; the system never crashes due to a dead phone.
+# Audio comes from phones via WebSocket (browser mic → ws_server.py).
+# main.py calls listener.feed_audio(raw_bytes) to push PCM data here.
+# No Termux, no UDP, no app — phones just open a browser URL.
 
 import queue
 import random
-import socket
-import time
 import threading
-import urllib.request
+import time
 
 import numpy as np
 
 from config import (
-    YAMNET_SR, CHUNK_DURATION, SIREN_THRESHOLD,
-    SIREN_COOLDOWN, SIREN_DECAY,
-    PHONE_UDP, PHONE_HTTP, PHONE_DEVICE,
+    YAMNET_SR, CHUNK_DURATION,
+    SIREN_THRESHOLD, SIREN_COOLDOWN, SIREN_DECAY,
 )
-from utils.yamnet import infer, normalize, pcm16_bytes_to_float32
+from utils.yamnet import infer, normalize, pcm16_to_float32
 
 CHUNK_SAMPLES = int(YAMNET_SR * CHUNK_DURATION)
-CHUNK_BYTES   = CHUNK_SAMPLES * 2   # 16-bit PCM
 
 
 class SideListener:
     """
-    Listens to one road-side phone and exposes:
-        .siren_active  bool
-        .siren_score   float
-        .best_label    str
+    One instance per road side (1-4).
+
+    Audio flow:
+        Phone browser mic
+            → WebSocket (ws_server.py)
+            → main.py bridge calls feed_audio(raw_bytes)
+            → _inference_loop runs YAMNet
+            → updates .siren_active / .siren_score
+
+    Public attributes (read by main.py and controller.py):
+        .siren_active   bool   — True while siren is detected
+        .siren_score    float  — latest YAMNet siren score (0-1)
+        .best_label     str    — matched siren class name
+
+    Optional callback set by main.py:
+        .on_siren_detected(side, score, label, active, is_new_alert)
     """
 
-    def __init__(self, side: int, yamnet_model, class_names,
-                 siren_indices, audio_mode: str):
+    def __init__(self, side: int, yamnet_model, class_names, siren_indices):
         self.side          = side
         self.model         = yamnet_model
         self.class_names   = class_names
         self.siren_indices = siren_indices
-        self.audio_mode    = audio_mode
 
         self.siren_score   : float = 0.0
         self.siren_active  : bool  = False
         self.best_label    : str   = ""
         self.last_detected : float = 0.0
+        self.on_siren_detected     = None   # set by main.py
 
-        self._queue = queue.Queue(maxsize=5)
-        self._stop  = threading.Event()
+        self._audio_q = queue.Queue(maxsize=10)
+        self._stop    = threading.Event()
 
     # ── Public ────────────────────────────────────────────────────────────────
 
     def start(self):
-        threading.Thread(target=self._receive_loop,   daemon=True).start()
-        threading.Thread(target=self._inference_loop, daemon=True).start()
-        print(f"[Side {self.side}] Listener started ({self.audio_mode} mode)")
+        threading.Thread(
+            target=self._inference_loop,
+            daemon=True,
+            name=f"infer-side{self.side}",
+        ).start()
+        print(f"[Side {self.side}] Listener ready — waiting for phone audio via browser")
 
     def stop(self):
         self._stop.set()
 
-    # ── Receive router ────────────────────────────────────────────────────────
-
-    def _receive_loop(self):
-        dispatch = {
-            "udp":      self._recv_udp,
-            "http":     self._recv_http,
-            "device":   self._recv_device,
-            "simulate": self._recv_simulate,
-        }
-        fn = dispatch.get(self.audio_mode, self._recv_simulate)
-        while not self._stop.is_set():
-            try:
-                fn()
-            except Exception as e:
-                # Outer safety net: restart receiver after any unhandled error
-                print(f"[Side {self.side}] Receiver crashed ({e}), restarting in 5s ...")
-                time.sleep(5)
-
-    # ── UDP ───────────────────────────────────────────────────────────────────
-
-    def _recv_udp(self):
-        host, port = PHONE_UDP[self.side]
+    def feed_audio(self, raw_bytes: bytes):
+        """
+        Called by main.py WebSocket bridge.
+        raw_bytes: raw 16-bit PCM mono 16kHz from the phone browser mic.
+        """
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((host, port))
-            sock.settimeout(3.0)
-        except OSError as e:
-            print(f"[Side {self.side}] UDP bind error: {e}. Retrying in 5s ...")
-            time.sleep(5)
-            return
+            audio = pcm16_to_float32(raw_bytes)
+            if not self._audio_q.full():
+                self._audio_q.put_nowait(audio)
+        except Exception as e:
+            print(f"[Side {self.side}] feed_audio error: {e}")
 
-        print(f"[Side {self.side}] UDP listening on {host}:{port}")
-        buf = b""
-
-        while not self._stop.is_set():
-            try:
-                data, _ = sock.recvfrom(65535)
-                buf += data
-                while len(buf) >= CHUNK_BYTES:
-                    chunk, buf = buf[:CHUNK_BYTES], buf[CHUNK_BYTES:]
-                    audio = pcm16_bytes_to_float32(chunk)
-                    self._enqueue(audio)
-            except socket.timeout:
-                # Phone not sending — silently continue, don't crash
-                pass
-            except OSError as e:
-                print(f"[Side {self.side}] UDP recv error: {e}")
-                break
-
-        try:
-            sock.close()
-        except Exception:
-            pass
-
-    # ── HTTP ──────────────────────────────────────────────────────────────────
-
-    def _recv_http(self):
-        url = PHONE_HTTP[self.side]
-        buf = b""
-        print(f"[Side {self.side}] HTTP connecting to {url}")
-
-        while not self._stop.is_set():
-            try:
-                req = urllib.request.urlopen(url, timeout=5)
-                while not self._stop.is_set():
-                    data = req.read(4096)
-                    if not data:
-                        break
-                    buf += data
-                    while len(buf) >= CHUNK_BYTES:
-                        chunk, buf = buf[:CHUNK_BYTES], buf[CHUNK_BYTES:]
-                        audio = pcm16_bytes_to_float32(chunk)
-                        self._enqueue(audio)
-            except Exception as e:
-                print(f"[Side {self.side}] HTTP error: {e}. Retrying in 5s ...")
-                time.sleep(5)
-
-    # ── sounddevice ───────────────────────────────────────────────────────────
-
-    def _recv_device(self):
-        try:
-            import sounddevice as sd
-        except ImportError:
-            print(f"[Side {self.side}] sounddevice not installed, falling back to simulate.")
-            self._recv_simulate()
-            return
-
-        dev = PHONE_DEVICE[self.side]
-
-        def _cb(indata, frames, time_info, status):
-            self._enqueue(indata[:, 0].astype(np.float32).copy())
-
-        while not self._stop.is_set():
-            try:
-                print(f"[Side {self.side}] sounddevice device={dev}")
-                with sd.InputStream(samplerate=YAMNET_SR, blocksize=CHUNK_SAMPLES,
-                                    device=dev, channels=1, dtype="float32",
-                                    callback=_cb):
-                    while not self._stop.is_set():
-                        time.sleep(0.1)
-            except Exception as e:
-                print(f"[Side {self.side}] sounddevice error: {e}. Retrying in 5s ...")
-                time.sleep(5)
-
-    # ── Simulate ──────────────────────────────────────────────────────────────
-
-    def _recv_simulate(self):
-        print(f"[Side {self.side}] SIMULATE mode")
-        t_arr = np.linspace(0, CHUNK_DURATION, CHUNK_SAMPLES)
-
-        while not self._stop.is_set():
-            if random.random() < 0.04:
-                freq  = 700 + 800 * (0.5 + 0.5 * np.sin(2 * np.pi * 2 * t_arr))
-                audio = (0.8 * np.sin(2 * np.pi * freq * t_arr)).astype(np.float32)
-                print(f"[Side {self.side}] 🔊 Simulated siren!")
-            else:
-                audio = (np.random.randn(CHUNK_SAMPLES) * 0.02).astype(np.float32)
-            self._enqueue(audio)
-            time.sleep(CHUNK_DURATION)
-
-    # ── Inference ─────────────────────────────────────────────────────────────
+    # ── YAMNet inference loop ─────────────────────────────────────────────────
 
     def _inference_loop(self):
         while not self._stop.is_set():
+            # Wait for audio chunk
             try:
-                audio = self._queue.get(timeout=1.0)
+                audio = self._audio_q.get(timeout=1.0)
             except queue.Empty:
-                # Update decay even when no new audio arrives
+                # Update siren decay even when no audio arrives
                 self.siren_active = (time.time() - self.last_detected) < SIREN_DECAY
                 continue
 
+            # Run YAMNet
             try:
-                audio = normalize(audio)
+                audio  = normalize(audio)
                 result = infer(self.model, self.class_names, self.siren_indices, audio)
             except Exception as e:
                 print(f"[Side {self.side}] Inference error: {e}")
                 continue
 
-            self.siren_score = result["best_score"]
-            self.best_label  = result["best_label"]
+            # Update state
+            self.siren_score  = result["best_score"]
+            self.best_label   = result["best_label"]
             self.siren_active = (time.time() - self.last_detected) < SIREN_DECAY
 
+            # Check threshold
+            is_new_alert = False
             if result["best_score"] >= SIREN_THRESHOLD:
                 now = time.time()
                 if (now - self.last_detected) >= SIREN_COOLDOWN:
                     self.last_detected = now
-                    self._alert(result)
+                    is_new_alert       = True
+                    self.siren_active  = True
+                    self._print_alert(result)
 
-    def _alert(self, result: dict):
-        b = "═" * 55
+            # Notify callback → pushes to dashboard + MQTT
+            if self.on_siren_detected:
+                try:
+                    self.on_siren_detected(
+                        self.side,
+                        self.siren_score,
+                        self.best_label,
+                        self.siren_active,
+                        is_new_alert,
+                    )
+                except Exception as e:
+                    print(f"[Side {self.side}] Callback error: {e}")
+
+    def _print_alert(self, result: dict):
+        b = "=" * 55
         print(f"\n{b}")
-        print(f"  🚨  SIREN — SIDE {self.side}  |  {result['best_label']} ({result['best_score']:.3f})")
-        print(f"  ⏰  {time.strftime('%H:%M:%S')}")
+        print(f"  🚨  SIREN — SIDE {self.side}")
+        print(f"  Match : {result['best_label']} ({result['best_score']:.3f})")
+        print(f"  Top-1 : {result['top1_label']} ({result['top1_score']:.3f})")
+        print(f"  Time  : {time.strftime('%H:%M:%S')}")
         print(f"{b}\n")
-
-    def _enqueue(self, audio: np.ndarray):
-        if not self._queue.full():
-            self._queue.put(audio)

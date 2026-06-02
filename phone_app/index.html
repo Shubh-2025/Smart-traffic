@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mic Source</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;700;800&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+
+:root{
+  --bg:#08090d;
+  --surface:#111318;
+  --border:#1e2130;
+  --accent:#00e5a0;
+  --accent-dim:#003d2b;
+  --red:#ff4d6d;
+  --red-dim:#3d0015;
+  --text:#e2e8f0;
+  --muted:#4a5068;
+  --r:14px;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Syne',sans-serif;
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:32px 20px 48px;
+  gap:16px;
+}
+
+/* ── header ── */
+.hd{text-align:center;margin-bottom:4px}
+.hd h1{font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#fff}
+.hd span{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase}
+
+/* ── card ── */
+.card{
+  width:100%;max-width:360px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:18px;
+}
+.card-lbl{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+
+/* ── server input ── */
+.input-row{display:flex;gap:8px}
+input[type=text]{
+  flex:1;padding:11px 13px;
+  border-radius:10px;border:1px solid var(--border);
+  background:#0d0f14;color:var(--text);
+  font-family:'DM Mono',monospace;font-size:13px;outline:none;
+  transition:border-color 0.2s;
+}
+input[type=text]:focus{border-color:var(--accent)}
+input[type=text]::placeholder{color:var(--muted)}
+
+/* ── name input ── */
+input.name-in{
+  width:100%;padding:11px 13px;margin-bottom:10px;
+  border-radius:10px;border:1px solid var(--border);
+  background:#0d0f14;color:var(--text);
+  font-family:'Syne',sans-serif;font-size:14px;font-weight:700;outline:none;
+  transition:border-color 0.2s;
+}
+input.name-in:focus{border-color:var(--accent)}
+
+/* ── connect btn ── */
+.btn-connect{
+  padding:11px 16px;border-radius:10px;border:1px solid var(--accent);
+  background:transparent;color:var(--accent);
+  font-family:'Syne',sans-serif;font-size:13px;font-weight:700;
+  cursor:pointer;transition:background 0.2s,color 0.2s;white-space:nowrap;
+}
+.btn-connect:hover{background:var(--accent);color:#000}
+.btn-connect:disabled{opacity:0.3;cursor:not-allowed}
+
+/* ── status ── */
+.status{display:flex;align-items:center;gap:10px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background 0.3s}
+.dot.connecting{background:#f0a830;animation:blink 0.9s infinite}
+.dot.ok{background:var(--accent)}
+.dot.rec{background:var(--red);animation:blink 0.6s infinite}
+.dot.err{background:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+#status-txt{font-size:14px;font-weight:700}
+
+/* ── source badge ── */
+.badge{
+  margin-top:12px;padding:8px 18px;
+  border-radius:50px;border:1px solid var(--accent);
+  color:var(--accent);font-family:'DM Mono',monospace;font-size:15px;font-weight:500;
+  display:inline-block;letter-spacing:0.04em;
+}
+.badge.hidden{opacity:0}
+
+/* ── waveform ── */
+canvas{
+  width:100%;height:72px;display:block;
+  border-radius:10px;background:#0d0f14;
+}
+
+/* ── meter ── */
+.meter-wrap{height:6px;background:#0d0f14;border-radius:6px;overflow:hidden;margin-top:10px}
+.meter-fill{height:100%;width:0%;border-radius:6px;background:var(--accent);transition:width 0.04s}
+
+/* ── record button ── */
+.btn-rec{
+  width:100%;max-width:360px;padding:20px;
+  border-radius:var(--r);border:none;
+  font-family:'Syne',sans-serif;font-size:18px;font-weight:800;
+  letter-spacing:-0.3px;cursor:pointer;
+  transition:transform 0.1s,opacity 0.2s;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+}
+.btn-rec:active{transform:scale(0.96)}
+.btn-rec:disabled{opacity:0.35;cursor:not-allowed}
+.btn-rec.start{background:var(--accent);color:#000}
+.btn-rec.stop{background:var(--red);color:#fff}
+
+/* ── stats ── */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#0d0f14;border-radius:10px;padding:12px;text-align:center}
+.stat-v{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:var(--accent)}
+.stat-l{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-top:3px}
+
+/* ── cmd from manager ── */
+.cmd-banner{
+  width:100%;max-width:360px;padding:12px 16px;
+  border-radius:10px;border-left:3px solid var(--accent);
+  background:var(--accent-dim);
+  font-size:13px;font-weight:700;color:var(--accent);
+  display:none;
+}
+</style>
+</head>
+<body>
+
+<div class="hd">
+  <h1>🎙 Mic Source</h1>
+  <span>audio stream client</span>
+</div>
+
+<!-- Server connect -->
+<div class="card">
+  <div class="card-lbl">Your name</div>
+  <input class="name-in" id="my-name" type="text" placeholder="e.g. Speaker A" value="Phone">
+
+  <div class="card-lbl">Server address</div>
+  <div class="input-row">
+    <input type="text" id="server-url" placeholder="ws://192.168.x.x:8765" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="btn-connect" id="btn-connect" onclick="connectWS()">Connect</button>
+  </div>
+</div>
+
+<!-- Status -->
+<div class="card">
+  <div class="card-lbl">Status</div>
+  <div class="status">
+    <div class="dot" id="dot"></div>
+    <span id="status-txt">Not connected</span>
+  </div>
+  <div style="margin-top:14px">
+    <div class="card-lbl">Assigned ID</div>
+    <div class="badge hidden" id="badge">—</div>
+  </div>
+</div>
+
+<!-- Waveform + meter -->
+<div class="card">
+  <div class="card-lbl">Live audio</div>
+  <canvas id="viz" width="680" height="144"></canvas>
+  <div class="meter-wrap"><div class="meter-fill" id="meter"></div></div>
+</div>
+
+<!-- Stats -->
+<div class="card">
+  <div class="stats">
+    <div class="stat"><div class="stat-v" id="s-chunks">0</div><div class="stat-l">Chunks sent</div></div>
+    <div class="stat"><div class="stat-v" id="s-kb">0.0</div><div class="stat-l">KB sent</div></div>
+  </div>
+</div>
+
+<!-- Manager command banner -->
+<div class="cmd-banner" id="cmd-banner">📡 Command from manager</div>
+
+<!-- Record button -->
+<button class="btn-rec start" id="btn-rec" onclick="toggleRec()" disabled>
+  <span>🎤</span> Start Recording
+</button>
+
+<script>
+const SR=16000, CHUNK_MS=200;
+let ws=null, audioCtx=null, stream=null, processor=null, analyser=null, src=null;
+let recording=false, chunks=0, bytes=0, buf=[], vizId=null;
+
+function dot(s){ document.getElementById('dot').className='dot '+s }
+function status(t){ document.getElementById('status-txt').textContent=t }
+
+function connectWS(){
+  let url=document.getElementById('server-url').value.trim();
+  if(!url) return;
+  if(!url.startsWith('ws')) url='ws://'+url.replace(/^https?:\/\//,'')+':8765';
+  document.getElementById('server-url').value=url;
+  document.getElementById('btn-connect').disabled=true;
+  dot('connecting'); status('Connecting…');
+
+  ws=new WebSocket(url); ws.binaryType='arraybuffer';
+
+  ws.onopen=()=>{
+    const name=document.getElementById('my-name').value.trim()||'Phone';
+    ws.send(JSON.stringify({role:'phone',name}));
+    dot('ok'); status('Connected');
+    document.getElementById('btn-rec').disabled=false;
+  };
+
+  ws.onmessage=(e)=>{
+    if(typeof e.data!=='string') return;
+    const d=JSON.parse(e.data);
+    if(d.type==='hello'){
+      const b=document.getElementById('badge');
+      b.textContent=d.phone_id; b.classList.remove('hidden');
+    }
+    if(d.type==='cmd'){
+      const banner=document.getElementById('cmd-banner');
+      banner.style.display='block';
+      banner.textContent=`📡 Manager: ${d.cmd.toUpperCase()} command`;
+      setTimeout(()=>banner.style.display='none',3000);
+      if(d.cmd==='start'&&!recording) startRec();
+      if(d.cmd==='stop'&&recording) stopRec();
+    }
+  };
+
+  ws.onclose=()=>{
+    dot('err'); status('Disconnected');
+    document.getElementById('btn-rec').disabled=true;
+    document.getElementById('btn-connect').disabled=false;
+    if(recording) stopRec();
+  };
+
+  ws.onerror=()=>{
+    dot('err'); status('Connection failed');
+    document.getElementById('btn-connect').disabled=false;
+  };
+}
+
+async function toggleRec(){ recording? stopRec(): await startRec() }
+
+async function startRec(){
+  if(!ws||ws.readyState!==1) return;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:SR,channelCount:1,echoCancellation:true,noiseSuppression:true}});
+  }catch(e){ status('Mic denied: '+e.message); return; }
+
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:SR});
+  src=audioCtx.createMediaStreamSource(stream);
+  analyser=audioCtx.createAnalyser(); analyser.fftSize=256;
+  src.connect(analyser);
+  processor=audioCtx.createScriptProcessor(4096,1,1);
+  src.connect(processor); processor.connect(audioCtx.destination);
+  buf=[];
+
+  processor.onaudioprocess=(e)=>{
+    if(!recording) return;
+    const f32=e.inputBuffer.getChannelData(0);
+    const i16=new Int16Array(f32.length);
+    for(let i=0;i<f32.length;i++) i16[i]=Math.max(-1,Math.min(1,f32[i]))*32767;
+    buf.push(i16.buffer);
+    const tot=buf.reduce((a,b)=>a+new Int16Array(b).length,0);
+    if(tot>=Math.floor(SR*CHUNK_MS/1000)) flush();
+    // meter
+    let s=0; for(let i=0;i<f32.length;i++) s+=f32[i]*f32[i];
+    const rms=Math.sqrt(s/f32.length);
+    document.getElementById('meter').style.width=Math.min(100,rms*400)+'%';
+  };
+
+  recording=true;
+  ws.send(JSON.stringify({type:'recording_state',recording:true}));
+  dot('rec'); status('Recording…');
+  const b=document.getElementById('btn-rec');
+  b.className='btn-rec stop'; b.innerHTML='<span>⏹</span> Stop Recording';
+  drawViz();
+}
+
+function flush(){
+  if(!buf.length) return;
+  const total=buf.reduce((a,b)=>a+b.byteLength,0);
+  const out=new Uint8Array(total); let off=0;
+  for(const b of buf){ out.set(new Uint8Array(b),off); off+=b.byteLength; }
+  buf=[];
+  if(ws&&ws.readyState===1){
+    ws.send(out.buffer);
+    chunks++; bytes+=total;
+    document.getElementById('s-chunks').textContent=chunks;
+    document.getElementById('s-kb').textContent=(bytes/1024).toFixed(1);
+  }
+}
+
+function stopRec(){
+  if(!recording) return;
+  recording=false; flush();
+  if(processor){processor.disconnect();processor=null;}
+  if(src){src.disconnect();src=null;}
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  if(audioCtx){audioCtx.close();audioCtx=null;}
+  if(vizId){cancelAnimationFrame(vizId);vizId=null;}
+  if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:'recording_state',recording:false}));
+  dot('ok'); status('Connected — idle');
+  document.getElementById('meter').style.width='0%';
+  const b=document.getElementById('btn-rec');
+  b.className='btn-rec start'; b.innerHTML='<span>🎤</span> Start Recording';
+}
+
+function drawViz(){
+  const cv=document.getElementById('viz'), c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  function fr(){
+    if(!analyser){return;}
+    vizId=requestAnimationFrame(fr);
+    const d=new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(d);
+    c.clearRect(0,0,W,H);
+    c.fillStyle='#0d0f14'; c.fillRect(0,0,W,H);
+    c.strokeStyle='#00e5a0'; c.lineWidth=2; c.beginPath();
+    const sw=W/d.length; let x=0;
+    for(let i=0;i<d.length;i++){
+      const y=(d[i]/128)*H/2;
+      i===0?c.moveTo(x,y):c.lineTo(x,y); x+=sw;
+    }
+    c.lineTo(W,H/2); c.stroke();
+  }
+  fr();
+}
+
+// Auto-fill server URL from host
+window.onload=()=>{
+  const h=location.hostname;
+  if(h&&h!=='localhost'&&h!=='127.0.0.1')
+    document.getElementById('server-url').value=`ws://${h}:8765`;
+};
+</script>
+</body>
+</html>
