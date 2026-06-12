@@ -1,1877 +1,987 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Smart Traffic Control</title>
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    />
-    <style>
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Traffic Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow:wght@300;400;500;600;700;900&family=Barlow+Condensed:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050608;
+  --s1:#0a0c10;
+  --s2:#0f1116;
+  --s3:#141720;
+  --s4:#1a1e2a;
+  --border:#1e2235;
+  --border2:#252a3d;
+  --green:#00ff88;
+  --green-dim:rgba(0,255,136,0.08);
+  --green-mid:rgba(0,255,136,0.18);
+  --red:#ff3355;
+  --red-dim:rgba(255,51,85,0.08);
+  --amber:#ffaa00;
+  --amber-dim:rgba(255,170,0,0.08);
+  --blue:#4d9fff;
+  --blue-dim:rgba(77,159,255,0.08);
+  --cyan:#00d4ff;
+  --text:#c8d0e8;
+  --text2:#7a839e;
+  --text3:#454d66;
+  --white:#f0f3ff;
+  --r:10px;
+  --r2:6px;
+}
 
-      :root {
-        /* Dark theme – pitch black + subtle purple */
-        --bg: #000000;
-        --s1: #0a0a0f;
-        --s2: #111118;
-        --s3: #1a1a24;
-        --s4: #242430;
-        --border: #2a2a3a;
-        --border2: #3a3a50;
-        --green: #9467cc;
-        --green-dim: rgba(148, 103, 204, 0.08);
-        --green-mid: rgba(148, 103, 204, 0.18);
-        --red: #b57edc;
-        --red-dim: rgba(181, 126, 220, 0.08);
-        --amber: #a78bfa;
-        --amber-dim: rgba(167, 139, 250, 0.08);
-        --blue: #7c8ce0;
-        --blue-dim: rgba(124, 140, 224, 0.08);
-        --cyan: #9467cc;
-        --text: #e0e0ea;
-        --text2: #8a8fa8;
-        --text3: #5a6078;
-        --white: #f0f2ff;
-        --r: 12px;
-        --r2: 8px;
-        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-        --transition-theme:
-          background-color 0.3s, color 0.3s, border-color 0.3s;
-        --font-sans:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-          Arial, sans-serif;
-        --font-mono:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-      }
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;overflow:hidden}
 
-      body.light-theme {
-        --bg: #ffffff;
-        --s1: #fafbff;
-        --s2: #f1f3f9;
-        --s3: #e5e7f0;
-        --s4: #b0b5c5; /* darker road cells for visibility */
-        --border: #b8bcca;
-        --border2: #9aa0b0;
-        --green: #6d3b9b;
-        --green-dim: rgba(109, 59, 155, 0.07);
-        --green-mid: rgba(109, 59, 155, 0.15);
-        --red: #9b4dca;
-        --red-dim: rgba(155, 77, 202, 0.07);
-        --amber: #8250c4;
-        --amber-dim: rgba(130, 80, 196, 0.07);
-        --blue: #5b5fc7;
-        --blue-dim: rgba(91, 95, 199, 0.07);
-        --cyan: #6d3b9b;
-        --text: #1c1b2b;
-        --text2: #2d2840;
-        --text3: #4a4560;
-        --white: #11111a;
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
-      }
+/* ── LAYOUT ── */
+.layout{
+  display:grid;
+  height:100vh;
+  grid-template-rows:52px 1fr;
+  grid-template-columns:260px 1fr 300px;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left   main  right";
+}
 
-      html,
-      body {
-        height: 100%;
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--font-sans);
-        overflow: hidden;
-        transition: var(--transition-theme);
-      }
+/* ── TOPBAR ── */
+#topbar{
+  grid-area:topbar;
+  background:var(--s1);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;
+  padding:0 20px;gap:16px;
+  position:relative;z-index:10;
+}
 
-      .layout {
-        display: grid;
-        height: 100vh;
-        grid-template-rows: 54px 1fr;
-        grid-template-columns: 268px 1fr 308px;
-        grid-template-areas:
-          "topbar topbar topbar"
-          "left   main  right";
-      }
+.logo{
+  display:flex;align-items:center;gap:9px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:20px;font-weight:900;letter-spacing:0.04em;
+  color:var(--white);text-transform:uppercase;
+  flex-shrink:0;
+}
+.logo-mark{
+  width:30px;height:30px;
+  background:linear-gradient(135deg,var(--green),var(--cyan));
+  border-radius:7px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+}
+.logo-sub{
+  font-family:'Space Mono',monospace;
+  font-size:9px;color:var(--text3);
+  letter-spacing:0.12em;text-transform:uppercase;
+  line-height:1;
+}
 
-      @media (max-width: 1200px) {
-        .layout {
-          grid-template-columns: 240px 1fr 280px;
-        }
-      }
+.topbar-divider{width:1px;height:28px;background:var(--border);flex-shrink:0}
 
-      @media (max-width: 960px) {
-        .layout {
-          grid-template-columns: 1fr;
-          grid-template-rows: 50px 1fr;
-          grid-template-areas:
-            "topbar"
-            "main";
-        }
-        #left,
-        #right {
-          display: none;
-        }
-        #phones-grid {
-          grid-template-columns: 1fr !important;
-        }
-      }
+.conn-row{display:flex;align-items:center;gap:8px;flex:1}
+.ws-input{
+  background:var(--s2);border:1px solid var(--border);
+  color:var(--text);font-family:'Space Mono',monospace;font-size:11px;
+  padding:6px 11px;border-radius:var(--r2);outline:none;width:210px;
+  transition:border-color 0.2s;
+}
+.ws-input:focus{border-color:var(--green)}
+.ws-input::placeholder{color:var(--text3)}
 
-      #topbar {
-        grid-area: topbar;
-        background: var(--s1);
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        align-items: center;
-        padding: 0 20px;
-        gap: 16px;
-        z-index: 20;
-        box-shadow: var(--shadow-sm);
-        transition: var(--transition-theme);
-      }
+.btn{
+  padding:6px 14px;border-radius:var(--r2);
+  font-family:'Barlow',sans-serif;font-size:12px;font-weight:600;
+  cursor:pointer;transition:all 0.15s;border:1px solid;white-space:nowrap;
+}
+.btn-green{background:var(--green);border-color:var(--green);color:#000}
+.btn-green:hover{opacity:0.85}
+.btn-ghost{background:transparent;border-color:var(--border2);color:var(--text2)}
+.btn-ghost:hover{border-color:var(--green);color:var(--green)}
+.btn-red{background:transparent;border-color:var(--red);color:var(--red)}
+.btn-red:hover{background:var(--red);color:#fff}
+.btn:disabled{opacity:0.25;cursor:not-allowed}
 
-      .logo {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 20px;
-        font-weight: 900;
-        letter-spacing: 0.02em;
-        color: var(--white);
-        text-transform: uppercase;
-        flex-shrink: 0;
-      }
-      .logo-mark {
-        width: 32px;
-        height: 32px;
-        background: linear-gradient(135deg, var(--green), var(--blue));
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .traffic-light-icon {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2px;
-      }
-      .tl-red,
-      .tl-yellow,
-      .tl-green {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-      }
-      .tl-red {
-        background: var(--red);
-      }
-      .tl-yellow {
-        background: var(--amber);
-      }
-      .tl-green {
-        background: var(--green);
-      }
+.status-chip{
+  display:flex;align-items:center;gap:6px;
+  font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);
+  background:var(--s2);border:1px solid var(--border);
+  padding:4px 10px;border-radius:20px;
+}
+.ws-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0;transition:background 0.3s}
+.ws-dot.ok{background:var(--green)}
+.ws-dot.err{background:var(--red)}
+.ws-dot.connecting{background:var(--amber);animation:pulse 0.9s infinite}
 
-      .logo-sub {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        color: var(--text3);
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        line-height: 1;
-        transition: var(--transition-theme);
-      }
+.yamnet-chip{
+  font-family:'Space Mono',monospace;font-size:9px;
+  padding:3px 8px;border-radius:20px;border:1px solid var(--border2);
+  color:var(--text3);
+}
+.yamnet-chip.ready{border-color:var(--green);color:var(--green)}
 
-      .topbar-divider {
-        width: 1px;
-        height: 28px;
-        background: var(--border);
-        flex-shrink: 0;
-        transition: var(--transition-theme);
-      }
+.time-display{
+  margin-left:auto;font-family:'Space Mono',monospace;
+  font-size:12px;color:var(--text2);flex-shrink:0;
+}
 
-      .conn-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex: 1;
-        flex-wrap: wrap;
-      }
-      .ws-input {
-        background: var(--s2);
-        border: 1px solid var(--border);
-        color: var(--text);
-        font-family: var(--font-mono);
-        font-size: 11px;
-        padding: 7px 12px;
-        border-radius: var(--r2);
-        outline: none;
-        width: 210px;
-        transition:
-          border-color 0.2s,
-          box-shadow 0.2s,
-          background-color 0.3s,
-          color 0.3s;
-      }
-      .ws-input:focus {
-        border-color: var(--green);
-        box-shadow: 0 0 0 3px rgba(148, 103, 204, 0.15);
-      }
-      .ws-input::placeholder {
-        color: var(--text3);
-      }
+/* ── LEFT PANEL ── */
+#left{
+  grid-area:left;
+  background:var(--s1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;gap:0;overflow-y:auto;
+}
 
-      .btn {
-        padding: 7px 15px;
-        border-radius: var(--r2);
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        border: 1px solid;
-        white-space: nowrap;
-        letter-spacing: 0.02em;
-      }
-      .btn-green {
-        background: var(--green);
-        border-color: var(--green);
-        color: #fff;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      }
-      .btn-green:hover {
-        background: #7d54b0;
-        border-color: #7d54b0;
-        transform: translateY(-1px);
-      }
-      .btn-ghost {
-        background: transparent;
-        border-color: var(--border2);
-        color: var(--text2);
-      }
-      .btn-ghost:hover {
-        border-color: var(--green);
-        color: var(--green);
-        background: var(--green-dim);
-      }
-      .btn-red {
-        background: transparent;
-        border-color: var(--red);
-        color: var(--red);
-      }
-      .btn-red:hover {
-        background: var(--red);
-        color: #fff;
-      }
-      .btn:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-        pointer-events: none;
-      }
-      .btn:active {
-        transform: scale(0.97);
-      }
+.panel-section{padding:16px;border-bottom:1px solid var(--border)}
+.section-label{
+  font-family:'Space Mono',monospace;font-size:9px;
+  letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--text3);margin-bottom:12px;
+}
 
-      .theme-toggle {
-        background: transparent;
-        border: 1px solid var(--border2);
-        color: var(--text2);
-        font-size: 14px;
-        width: 34px;
-        height: 34px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s;
-        margin-left: auto;
-        margin-right: 8px;
-      }
-      .theme-toggle:hover {
-        border-color: var(--green);
-        color: var(--green);
-        background: var(--green-dim);
-      }
+/* Stats grid */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat-box{
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:var(--r);padding:10px 12px;
+}
+.stat-val{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:26px;font-weight:700;color:var(--white);line-height:1;
+}
+.stat-lbl{
+  font-family:'Space Mono',monospace;font-size:8px;
+  letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--text3);margin-top:3px;
+}
+.stat-box.green .stat-val{color:var(--green)}
+.stat-box.red .stat-val{color:var(--red)}
+.stat-box.amber .stat-val{color:var(--amber)}
+.stat-box.blue .stat-val{color:var(--blue)}
 
-      .status-chip {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-family: var(--font-mono);
-        font-size: 10px;
-        color: var(--text3);
-        background: var(--s2);
-        border: 1px solid var(--border);
-        padding: 5px 12px;
-        border-radius: 20px;
-        transition: var(--transition-theme);
-      }
-      .ws-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--text3);
-        flex-shrink: 0;
-        transition:
-          background 0.3s,
-          box-shadow 0.3s;
-      }
-      .ws-dot.ok {
-        background: var(--green);
-      }
-      .ws-dot.err {
-        background: var(--red);
-      }
-      .ws-dot.connecting {
-        background: var(--amber);
-        animation: pulse 0.9s infinite;
-      }
+/* Global controls */
+.ctrl-btns{display:flex;flex-direction:column;gap:6px}
 
-      .yamnet-chip {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        padding: 4px 10px;
-        border-radius: 20px;
-        border: 1px solid var(--border2);
-        color: var(--text3);
-        transition: all 0.3s;
-      }
-      .yamnet-chip.ready {
-        border-color: var(--green);
-        color: var(--green);
-        background: var(--green-dim);
-      }
+/* Signal panel */
+.signal-display{
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;
+}
+.signal-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.signal-side{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:36px;font-weight:900;color:var(--white);
+}
+.signal-side span{font-size:16px;color:var(--text3);font-weight:400}
+.signal-time{
+  font-family:'Space Mono',monospace;
+  font-size:28px;font-weight:700;color:var(--green);
+}
+.signal-bar-wrap{height:4px;background:var(--s3);border-radius:4px;overflow:hidden;margin-top:6px}
+.signal-bar{height:100%;background:var(--green);border-radius:4px;transition:width 1s linear}
+.signal-meta{
+  font-family:'Space Mono',monospace;font-size:9px;
+  color:var(--text3);margin-top:8px;
+}
+.siren-override-badge{
+  display:none;background:var(--red-dim);border:1px solid var(--red);
+  border-radius:var(--r2);padding:6px 10px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;font-weight:700;color:var(--red);
+  letter-spacing:0.05em;text-transform:uppercase;
+  animation:flash 0.8s infinite;
+  margin-top:8px;text-align:center;
+}
+.siren-override-badge.active{display:block}
+@keyframes flash{0%,100%{opacity:1}50%{opacity:0.4}}
 
-      .time-display {
-        margin-left: 8px;
-        font-family: var(--font-mono);
-        font-size: 12px;
-        color: var(--text2);
-        flex-shrink: 0;
-        background: var(--s2);
-        padding: 6px 12px;
-        border-radius: var(--r2);
-        border: 1px solid var(--border);
-        transition: var(--transition-theme);
-      }
+/* ML Log */
+.ml-log{
+  flex:1;font-family:'Space Mono',monospace;font-size:10px;
+  color:var(--text3);line-height:1.8;overflow-y:auto;
+  max-height:200px;
+}
+.ml-log .entry{padding:1px 0}
+.ml-log .entry.siren{color:var(--red)}
+.ml-log .entry.ok{color:var(--green)}
 
-      /* LEFT PANEL */
-      #left {
-        grid-area: left;
-        background: var(--s1);
-        border-right: 1px solid var(--border);
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        transition: var(--transition-theme);
-      }
+/* ── MAIN ── */
+#main{
+  grid-area:main;
+  overflow-y:auto;
+  padding:20px;
+  display:flex;flex-direction:column;gap:16px;
+  background:var(--bg);
+}
 
-      .panel-section {
-        padding: 16px;
-        border-bottom: 1px solid var(--border);
-        transition: var(--transition-theme);
-      }
-      .section-label {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        color: var(--text3);
-        margin-bottom: 12px;
-        font-weight: 700;
-      }
+.main-header{
+  display:flex;align-items:center;justify-content:space-between;
+}
+.main-title{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:18px;font-weight:700;color:var(--white);
+  letter-spacing:0.04em;text-transform:uppercase;
+}
 
-      .stats-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      .stat-box {
-        background: var(--s2);
-        border: 1px solid var(--border);
-        border-radius: var(--r);
-        padding: 12px 14px;
-        transition:
-          border-color 0.25s,
-          box-shadow 0.25s,
-          background-color 0.3s;
-      }
-      .stat-box:hover {
-        border-color: var(--border2);
-        box-shadow: var(--shadow-sm);
-      }
-      .stat-val {
-        font-size: 28px;
-        font-weight: 700;
-        color: var(--white);
-        line-height: 1;
-      }
-      .stat-lbl {
-        font-family: var(--font-mono);
-        font-size: 8px;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--text3);
-        margin-top: 4px;
-      }
-      .stat-box.green .stat-val {
-        color: var(--green);
-      }
-      .stat-box.red .stat-val {
-        color: var(--red);
-      }
-      .stat-box.amber .stat-val {
-        color: var(--amber);
-      }
-      .stat-box.blue .stat-val {
-        color: var(--blue);
-      }
+/* Phone cards grid */
+#phones-grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:14px;
+}
 
-      .ctrl-btns {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
+/* Empty */
+#empty-state{
+  padding:60px 32px;text-align:center;color:var(--text3);
+  border:1px dashed var(--border2);border-radius:var(--r);
+}
+#empty-state .e-icon{font-size:32px;margin-bottom:12px}
+#empty-state p{font-size:13px;line-height:1.7}
+#empty-state code{
+  font-family:'Space Mono',monospace;font-size:11px;
+  background:var(--s2);padding:2px 6px;border-radius:4px;color:var(--green);
+}
 
-      .signal-display {
-        background: var(--s2);
-        border: 1px solid var(--border);
-        border-radius: var(--r);
-        padding: 16px;
-        box-shadow: var(--shadow-sm);
-        transition: var(--transition-theme);
-      }
-      .signal-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
-      }
-      .signal-side {
-        font-size: 38px;
-        font-weight: 900;
-        color: var(--white);
-        line-height: 1;
-      }
-      .signal-side span {
-        font-size: 16px;
-        color: var(--text3);
-        font-weight: 400;
-      }
-      .signal-time {
-        font-family: var(--font-mono);
-        font-size: 30px;
-        font-weight: 700;
-        color: var(--green);
-      }
-      .signal-bar-wrap {
-        height: 5px;
-        background: var(--s3);
-        border-radius: 5px;
-        overflow: hidden;
-        margin-top: 6px;
-      }
-      .signal-bar {
-        height: 100%;
-        background: linear-gradient(90deg, var(--green), var(--blue));
-        border-radius: 5px;
-        transition: width 1s linear;
-      }
-      .signal-meta {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        color: var(--text3);
-        margin-top: 8px;
-      }
+/* ── PHONE CARD ── */
+.phone-card{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:16px;
+  display:flex;flex-direction:column;gap:10px;
+  transition:border-color 0.3s;
+  position:relative;overflow:hidden;
+}
+.phone-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--border);transition:background 0.3s;
+}
+.phone-card.recording{border-color:rgba(255,51,85,0.3)}
+.phone-card.recording::before{background:var(--red)}
+.phone-card.siren-active{border-color:var(--red)!important}
+.phone-card.siren-active::before{background:linear-gradient(90deg,var(--red),var(--amber));animation:shimmer 1s infinite}
+@keyframes shimmer{0%{opacity:1}50%{opacity:0.4}100%{opacity:1}}
 
-      .siren-override-badge {
-        display: none;
-        background: var(--red-dim);
-        border: 1px solid var(--red);
-        border-radius: var(--r2);
-        padding: 7px 12px;
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--red);
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        animation: flash 0.8s infinite;
-        margin-top: 8px;
-        text-align: center;
-      }
-      .siren-override-badge.active {
-        display: block;
-      }
-      @keyframes flash {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.5;
-        }
-      }
+.pc-head{display:flex;align-items:flex-start;gap:10px}
+.pc-icon{
+  width:38px;height:38px;border-radius:9px;
+  background:var(--s3);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;flex-shrink:0;
+}
+.pc-info{flex:1;min-width:0}
+.pc-name{
+  font-family:'Barlow',sans-serif;font-size:14px;font-weight:600;
+  color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.pc-meta{
+  font-family:'Space Mono',monospace;font-size:9px;
+  color:var(--text3);letter-spacing:0.06em;margin-top:2px;
+}
 
-      .ml-log {
-        flex: 1;
-        font-family: var(--font-mono);
-        font-size: 10px;
-        color: var(--text3);
-        line-height: 1.9;
-        overflow-y: auto;
-        max-height: 200px;
-      }
-      .ml-log .entry {
-        padding: 1px 0;
-      }
-      .ml-log .entry.siren {
-        color: var(--red);
-      }
-      .ml-log .entry.ok {
-        color: var(--green);
-      }
+.pc-badges{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+.badge{
+  font-family:'Space Mono',monospace;font-size:8px;
+  padding:2px 7px;border-radius:20px;border:1px solid;
+  letter-spacing:0.06em;white-space:nowrap;
+}
+.badge-idle{border-color:var(--border2);color:var(--text3)}
+.badge-rec{border-color:var(--red);color:var(--red);animation:pulse 0.8s infinite}
+.badge-siren{border-color:var(--amber);color:var(--amber);background:var(--amber-dim);animation:pulse 0.6s infinite}
+.badge-side{border-color:var(--blue);color:var(--blue);background:var(--blue-dim)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 
-      /* MAIN */
-      #main {
-        grid-area: main;
-        overflow-y: auto;
-        padding: 20px 22px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        background: var(--bg);
-        transition: var(--transition-theme);
-      }
-      .main-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .main-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--white);
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
+/* Waveform canvas */
+.pc-canvas{width:100%;height:44px;border-radius:var(--r2);display:block}
 
-      #phones-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 14px;
-      }
+/* Level bar */
+.level-wrap{height:3px;background:var(--s3);border-radius:3px;overflow:hidden}
+.level-fill{height:100%;width:0%;border-radius:3px;background:var(--green);transition:width 0.05s}
+.level-fill.hot{background:var(--red)}
 
-      #empty-state {
-        padding: 64px 32px;
-        text-align: center;
-        color: var(--text3);
-        border: 1px dashed var(--border2);
-        border-radius: var(--r);
-        background: var(--s1);
-        transition: var(--transition-theme);
-      }
-      #empty-state .e-icon {
-        font-size: 36px;
-        margin-bottom: 14px;
-        color: var(--text2);
-      }
-      #empty-state p {
-        font-size: 13px;
-        line-height: 1.7;
-        color: var(--text2);
-      }
-      #empty-state code {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        background: var(--s2);
-        padding: 3px 8px;
-        border-radius: 5px;
-        color: var(--green);
-      }
+/* Siren score */
+.siren-row{
+  display:flex;align-items:center;gap:10px;
+  font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);
+}
+.siren-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.siren-score-bar{height:4px;flex:1;background:var(--s3);border-radius:4px;overflow:hidden;max-width:80px}
+.siren-score-fill{height:100%;border-radius:4px;background:var(--text3);transition:width 0.3s,background 0.3s}
+.siren-score-num{font-size:10px;color:var(--text3);min-width:32px;text-align:right}
 
-      /* PHONE CARD */
-      .phone-card {
-        background: var(--s1);
-        border: 1px solid var(--border);
-        border-radius: var(--r);
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        transition:
-          border-color 0.3s,
-          box-shadow 0.3s,
-          background-color 0.3s;
-        position: relative;
-        overflow: hidden;
-        box-shadow: var(--shadow-sm);
-      }
-      .phone-card:hover {
-        box-shadow: var(--shadow-md);
-        border-color: var(--border2);
-      }
-      .phone-card::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: var(--border);
-        transition: background 0.3s;
-        border-radius: 0 0 1px 1px;
-      }
-      .phone-card.recording {
-        border-color: rgba(155, 77, 202, 0.3);
-      }
-      .phone-card.recording::before {
-        background: var(--red);
-      }
-      .phone-card.siren-active {
-        border-color: var(--red) !important;
-      }
-      .phone-card.siren-active::before {
-        background: linear-gradient(90deg, var(--red), var(--amber));
-        animation: shimmer 1s infinite;
-      }
-      @keyframes shimmer {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.5;
-        }
-      }
+/* Result strip */
+.pc-result{
+  background:var(--s2);border-radius:var(--r2);padding:7px 10px;
+  font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);
+  display:none;border-left:2px solid var(--border2);
+}
+.pc-result.siren-result{border-left-color:var(--red);color:var(--amber)}
 
-      .pc-head {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-      }
-      .pc-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        background: var(--s3);
-        border: 1px solid var(--border2);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        flex-shrink: 0;
-        color: var(--text2);
-      }
-      .pc-info {
-        flex: 1;
-        min-width: 0;
-      }
-      .pc-name {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--white);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .pc-meta {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        color: var(--text3);
-        letter-spacing: 0.06em;
-        margin-top: 2px;
-      }
+/* Card actions */
+.pc-actions{display:flex;gap:6px;margin-top:2px}
+.pc-btn{
+  flex:1;padding:7px;border-radius:var(--r2);
+  border:1px solid var(--border2);background:transparent;
+  color:var(--text2);font-family:'Barlow',sans-serif;font-size:11px;font-weight:600;
+  cursor:pointer;transition:all 0.15s;
+}
+.pc-btn.start-btn:hover{border-color:var(--green);color:var(--green)}
+.pc-btn.stop-btn{border-color:var(--red);color:var(--red)}
+.pc-btn.stop-btn:hover{background:var(--red);color:#fff}
 
-      .pc-badges {
-        display: flex;
-        gap: 5px;
-        flex-wrap: wrap;
-        margin-left: auto;
-      }
-      .badge {
-        font-family: var(--font-mono);
-        font-size: 8px;
-        padding: 3px 8px;
-        border-radius: 20px;
-        border: 1px solid;
-        letter-spacing: 0.06em;
-        white-space: nowrap;
-        font-weight: 600;
-      }
-      .badge-idle {
-        border-color: var(--border2);
-        color: var(--text3);
-      }
-      .badge-rec {
-        border-color: var(--red);
-        color: var(--red);
-        background: var(--red-dim);
-        animation: pulse 0.8s infinite;
-      }
-      .badge-siren {
-        border-color: var(--amber);
-        color: var(--amber);
-        background: var(--amber-dim);
-        animation: pulse 0.6s infinite;
-      }
-      .badge-side {
-        border-color: var(--blue);
-        color: var(--blue);
-        background: var(--blue-dim);
-      }
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.5;
-        }
-      }
+/* ── RIGHT PANEL ── */
+#right{
+  grid-area:right;
+  background:var(--s1);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
 
-      .pc-canvas {
-        width: 100%;
-        height: 44px;
-        border-radius: var(--r2);
-        display: block;
-      }
-      .level-wrap {
-        height: 3px;
-        background: var(--s3);
-        border-radius: 3px;
-        overflow: hidden;
-      }
-      .level-fill {
-        height: 100%;
-        width: 0%;
-        border-radius: 3px;
-        background: var(--green);
-        transition: width 0.05s;
-      }
-      .level-fill.hot {
-        background: var(--red);
-      }
+/* Traffic intersection diagram */
+.intersection{
+  padding:20px 16px;border-bottom:1px solid var(--border);
+}
+.int-grid{
+  display:grid;grid-template-columns:1fr 60px 1fr;
+  grid-template-rows:1fr 60px 1fr;
+  gap:0;width:100%;
+  aspect-ratio:1;max-width:268px;
+  margin:0 auto;
+}
+.road-cell{display:flex;align-items:center;justify-content:center}
+.road-h{background:var(--s3);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.road-v{background:var(--s3);border-left:1px solid var(--border);border-right:1px solid var(--border)}
+.road-center{background:var(--s3)}
+.road-corner{background:var(--bg)}
+.traffic-light{
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:4px;padding:8px;
+}
+.light-label{
+  font-family:'Space Mono',monospace;font-size:8px;
+  color:var(--text3);letter-spacing:0.08em;text-align:center;
+  text-transform:uppercase;margin-bottom:2px;
+}
+.light-circle{
+  width:20px;height:20px;border-radius:50%;
+  background:var(--s4);border:1px solid var(--border);
+  transition:all 0.4s;flex-shrink:0;
+}
+.light-circle.green-on{background:var(--green);box-shadow:0 0 12px var(--green)}
+.light-circle.red-on{background:var(--red);box-shadow:0 0 8px var(--red)}
+.light-count{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:18px;font-weight:700;color:var(--text2);
+  margin-top:2px;line-height:1;
+}
+.light-count.green-text{color:var(--green)}
 
-      .siren-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-family: var(--font-mono);
-        font-size: 10px;
-        color: var(--text3);
-      }
-      .siren-label {
-        flex: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .siren-score-bar {
-        height: 4px;
-        flex: 1;
-        background: var(--s3);
-        border-radius: 4px;
-        overflow: hidden;
-        max-width: 80px;
-      }
-      .siren-score-fill {
-        height: 100%;
-        border-radius: 4px;
-        background: var(--text3);
-        transition:
-          width 0.3s,
-          background 0.3s;
-      }
-      .siren-score-num {
-        font-size: 10px;
-        color: var(--text3);
-        min-width: 34px;
-        text-align: right;
-      }
+/* Score bars */
+.scores-section{padding:16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.score-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.score-side{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;font-weight:700;color:var(--text2);
+  width:14px;flex-shrink:0;
+}
+.score-bar-wrap{flex:1;height:6px;background:var(--s3);border-radius:6px;overflow:hidden}
+.score-bar-fill{height:100%;border-radius:6px;background:var(--blue);transition:width 0.5s}
+.score-bar-fill.winning{background:var(--green)}
+.score-bar-fill.siren-win{background:var(--red);animation:pulse 0.5s infinite}
+.score-num{
+  font-family:'Space Mono',monospace;font-size:9px;
+  color:var(--text3);width:40px;text-align:right;flex-shrink:0;
+}
+.score-siren-flag{font-size:10px}
 
-      .pc-result {
-        background: var(--s2);
-        border-radius: var(--r2);
-        padding: 8px 12px;
-        font-family: var(--font-mono);
-        font-size: 9px;
-        color: var(--text3);
-        display: none;
-        border-left: 3px solid var(--border2);
-        transition: var(--transition-theme);
-      }
-      .pc-result.siren-result {
-        border-left-color: var(--red);
-        color: var(--amber);
-        background: var(--red-dim);
-      }
+/* Event log */
+.event-log-section{padding:16px;flex:1;display:flex;flex-direction:column;min-height:0}
+.event-log{
+  flex:1;overflow-y:auto;
+  display:flex;flex-direction:column;gap:4px;
+}
+.event-item{
+  display:flex;gap:8px;align-items:flex-start;
+  font-family:'Space Mono',monospace;font-size:9px;
+  padding:5px 8px;border-radius:var(--r2);
+  background:var(--s2);border:1px solid var(--border);
+  line-height:1.5;
+}
+.event-time{color:var(--text3);flex-shrink:0}
+.event-body{color:var(--text2)}
+.event-item.ev-siren{border-color:rgba(255,51,85,0.3);background:var(--red-dim)}
+.event-item.ev-siren .event-body{color:var(--red)}
+.event-item.ev-signal{border-color:rgba(0,255,136,0.2);background:var(--green-dim)}
+.event-item.ev-signal .event-body{color:var(--green)}
+.event-item.ev-join{border-color:rgba(77,159,255,0.2)}
+.event-item.ev-join .event-body{color:var(--blue)}
 
-      .pc-actions {
-        display: flex;
-        gap: 6px;
-        margin-top: 2px;
-      }
-      .pc-btn {
-        flex: 1;
-        padding: 8px;
-        border-radius: var(--r2);
-        border: 1px solid var(--border2);
-        background: transparent;
-        color: var(--text2);
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 0.02em;
-      }
-      .pc-btn.start-btn:hover {
-        border-color: var(--green);
-        color: var(--green);
-        background: var(--green-dim);
-      }
-      .pc-btn.stop-btn {
-        border-color: var(--red);
-        color: var(--red);
-      }
-      .pc-btn.stop-btn:hover {
-        background: var(--red);
-        color: #fff;
-      }
-      .pc-btn:active {
-        transform: scale(0.96);
-      }
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+</style>
+</head>
+<body>
 
-      /* RIGHT PANEL */
-      #right {
-        grid-area: right;
-        background: var(--s1);
-        border-left: 1px solid var(--border);
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-        transition: var(--transition-theme);
-      }
+<div class="layout">
 
-      .intersection {
-        padding: 20px 16px;
-        border-bottom: 1px solid var(--border);
-      }
-      .int-grid {
-        display: grid;
-        grid-template-columns: 1fr 64px 1fr;
-        grid-template-rows: 1fr 64px 1fr;
-        gap: 0;
-        width: 100%;
-        aspect-ratio: 1;
-        max-width: 268px;
-        margin: 0 auto;
-        background: var(--s4); /* fallback for entire grid */
-        border-radius: 4px;
-      }
-      .road-cell {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .road-h {
-        background: var(--s4);
-        border-top: 1px solid var(--border);
-        border-bottom: 1px solid var(--border);
-      }
-      .road-v {
-        background: var(--s4);
-        border-left: 1px solid var(--border);
-        border-right: 1px solid var(--border);
-      }
-      .road-center {
-        background: var(--s4);
-        border-radius: 4px;
-      }
-      .road-corner {
-        background: var(--bg);
-      }
-      .traffic-light {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 4px;
-        padding: 8px;
-      }
-      .light-label {
-        font-family: var(--font-mono);
-        font-size: 8px;
-        color: var(--text3);
-        letter-spacing: 0.08em;
-        text-align: center;
-        text-transform: uppercase;
-        margin-bottom: 2px;
-        font-weight: 600;
-      }
-      .light-circle {
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        background: var(--s3);
-        border: 2px solid var(--border);
-        transition: all 0.4s;
-        flex-shrink: 0;
-      }
-      .light-circle.red-on {
-        background: #ff0000 !important;
-        border: 2px solid #ff0000 !important;
-        box-shadow: 0 0 20px #ff0000 !important;
-      }
+<!-- ── TOPBAR ──────────────────────────────────────────────────────── -->
+<div id="topbar">
+  <div class="logo">
+    <div class="logo-mark">🚦</div>
+    <div>
+      Smart Traffic
+      <div class="logo-sub">Control System</div>
+    </div>
+  </div>
 
-      .light-circle.green-on {
-        background: #00ff00 !important;
-        border: 2px solid #00ff00 !important;
-        box-shadow: 0 0 20px #00ff00 !important;
-      }
-      .light-count {
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--text2);
-        margin-top: 2px;
-        line-height: 1;
-      }
-      .light-count.green-text {
-        color: var(--green);
-      }
+  <div class="topbar-divider"></div>
 
-      .scores-section {
-        padding: 16px;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
-      }
-      .score-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-      .score-side {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--text2);
-        width: 14px;
-        flex-shrink: 0;
-      }
-      .score-bar-wrap {
-        flex: 1;
-        height: 6px;
-        background: var(--s3);
-        border-radius: 6px;
-        overflow: hidden;
-      }
-      .score-bar-fill {
-        height: 100%;
-        border-radius: 6px;
-        background: var(--blue);
-        transition: width 0.5s;
-      }
-      .score-bar-fill.winning {
-        background: linear-gradient(90deg, var(--green), var(--blue));
-      }
-      .score-bar-fill.siren-win {
-        background: linear-gradient(90deg, var(--red), var(--amber));
-        animation: pulse 0.5s infinite;
-      }
-      .score-num {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        color: var(--text3);
-        width: 40px;
-        text-align: right;
-        flex-shrink: 0;
-      }
-      .score-siren-flag {
-        font-size: 12px;
-        color: var(--red);
-      }
+  <div class="conn-row">
+    <input class="ws-input" id="ws-url" placeholder="ws://192.168.x.x:8765" spellcheck="false" autocomplete="off">
+    <button class="btn btn-green" id="btn-connect" onclick="connectManager()">Connect</button>
+    <button class="btn btn-ghost" id="btn-disconnect" onclick="disconnectManager()" style="display:none">Disconnect</button>
+    <div class="status-chip">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Offline</span>
+    </div>
+    <div class="yamnet-chip" id="yamnet-chip">YAMNet —</div>
+  </div>
 
-      .event-log-section {
-        padding: 16px;
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      .event-log {
-        flex: 1;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      .event-item {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        font-family: var(--font-mono);
-        font-size: 9px;
-        padding: 6px 10px;
-        border-radius: var(--r2);
-        background: var(--s2);
-        border: 1px solid var(--border);
-        line-height: 1.5;
-        transition:
-          border-color 0.2s,
-          background-color 0.3s;
-      }
-      .event-time {
-        color: var(--text3);
-        flex-shrink: 0;
-      }
-      .event-body {
-        color: var(--text2);
-      }
-      .event-item.ev-siren {
-        border-color: rgba(181, 126, 220, 0.3);
-        background: var(--red-dim);
-      }
-      .event-item.ev-siren .event-body {
-        color: var(--red);
-      }
-      .event-item.ev-signal {
-        border-color: rgba(148, 103, 204, 0.3);
-        background: var(--green-dim);
-      }
-      .event-item.ev-signal .event-body {
-        color: var(--green);
-      }
-      .event-item.ev-join {
-        border-color: rgba(124, 140, 224, 0.3);
-        background: var(--blue-dim);
-      }
-      .event-item.ev-join .event-body {
-        color: var(--blue);
-      }
+  <div class="time-display" id="clock">00:00:00</div>
+</div>
 
-      ::-webkit-scrollbar {
-        width: 5px;
-        height: 5px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: var(--border2);
-        border-radius: 6px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #505070;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="layout">
-      <!-- TOPBAR -->
-      <div id="topbar">
-        <div class="logo">
-          <div class="logo-mark">
-            <div class="traffic-light-icon">
-              <span class="tl-red"></span>
-              <span class="tl-yellow"></span>
-              <span class="tl-green"></span>
-            </div>
-          </div>
-          <div>
-            Smart Traffic
-            <div class="logo-sub">Control System</div>
-          </div>
-        </div>
+<!-- ── LEFT PANEL ────────────────────────────────────────────────────── -->
+<div id="left">
 
-        <div class="topbar-divider"></div>
+  <div class="panel-section">
+    <div class="section-label">Session stats</div>
+    <div class="stats-grid">
+      <div class="stat-box blue"><div class="stat-val" id="stat-phones">0</div><div class="stat-lbl">Phones</div></div>
+      <div class="stat-box red"><div class="stat-val" id="stat-rec">0</div><div class="stat-lbl">Recording</div></div>
+      <div class="stat-box amber"><div class="stat-val" id="stat-sirens">0</div><div class="stat-lbl">Sirens</div></div>
+      <div class="stat-box green"><div class="stat-val" id="stat-cycles">0</div><div class="stat-lbl">Cycles</div></div>
+    </div>
+  </div>
 
-        <div class="conn-row">
-          <input
-            class="ws-input"
-            id="ws-url"
-            placeholder="ws://192.168.x.x:8765"
-            spellcheck="false"
-            autocomplete="off"
-          />
-          <button
-            class="btn btn-green"
-            id="btn-connect"
-            onclick="connectManager()"
-          >
-            Connect
-          </button>
-          <button
-            class="btn btn-ghost"
-            id="btn-disconnect"
-            onclick="disconnectManager()"
-            style="display: none"
-          >
-            Disconnect
-          </button>
-          <div class="status-chip">
-            <div class="ws-dot" id="ws-dot"></div>
-            <span id="ws-label">Offline</span>
-          </div>
-          <div class="yamnet-chip" id="yamnet-chip">YAMNet —</div>
-        </div>
+  <div class="panel-section">
+    <div class="section-label">Global controls</div>
+    <div class="ctrl-btns">
+      <button class="btn btn-green" id="btn-start-all" onclick="sendAll('start')" disabled>▶  Start all recording</button>
+      <button class="btn btn-red"   id="btn-stop-all"  onclick="sendAll('stop')"  disabled>■  Stop all recording</button>
+    </div>
+  </div>
 
-        <button
-          class="theme-toggle"
-          id="theme-toggle"
-          title="Switch light/dark mode"
-        >
-          <i class="fa-solid fa-moon"></i>
-        </button>
-
-        <div class="time-display" id="clock">00:00:00</div>
+  <div class="panel-section">
+    <div class="section-label">Current signal</div>
+    <div class="signal-display">
+      <div class="signal-row">
+        <div><div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:4px">GREEN SIDE</div>
+        <div class="signal-side" id="sig-side">—<span> / side</span></div></div>
+        <div><div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:4px">REMAINING</div>
+        <div class="signal-time" id="sig-countdown">—</div></div>
       </div>
+      <div class="signal-bar-wrap"><div class="signal-bar" id="sig-bar" style="width:0%"></div></div>
+      <div class="signal-meta" id="sig-meta">No decision yet</div>
+      <div class="siren-override-badge" id="siren-badge">🚨 SIREN PRIORITY OVERRIDE</div>
+    </div>
+  </div>
 
-      <!-- LEFT PANEL -->
-      <div id="left">
-        <div class="panel-section">
-          <div class="section-label">Session stats</div>
-          <div class="stats-grid">
-            <div class="stat-box blue">
-              <div class="stat-val" id="stat-phones">0</div>
-              <div class="stat-lbl">Phones</div>
-            </div>
-            <div class="stat-box red">
-              <div class="stat-val" id="stat-rec">0</div>
-              <div class="stat-lbl">Recording</div>
-            </div>
-            <div class="stat-box amber">
-              <div class="stat-val" id="stat-sirens">0</div>
-              <div class="stat-lbl">Sirens</div>
-            </div>
-            <div class="stat-box green">
-              <div class="stat-val" id="stat-cycles">0</div>
-              <div class="stat-lbl">Cycles</div>
-            </div>
-          </div>
-        </div>
+  <div class="panel-section" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div class="section-label">Inference log</div>
+    <div class="ml-log" id="ml-log">Waiting…</div>
+  </div>
 
-        <div class="panel-section">
-          <div class="section-label">Global controls</div>
-          <div class="ctrl-btns">
-            <button
-              class="btn btn-green"
-              id="btn-start-all"
-              onclick="sendAll('start')"
-              disabled
-            >
-              ▶ &nbsp;Start all recording
-            </button>
-            <button
-              class="btn btn-red"
-              id="btn-stop-all"
-              onclick="sendAll('stop')"
-              disabled
-            >
-              ■ &nbsp;Stop all recording
-            </button>
-          </div>
-        </div>
+</div>
 
-        <div class="panel-section">
-          <div class="section-label">Current signal</div>
-          <div class="signal-display">
-            <div class="signal-row">
-              <div>
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 9px;
-                    color: var(--text3);
-                    margin-bottom: 4px;
-                  "
-                >
-                  GREEN SIDE
-                </div>
-                <div class="signal-side" id="sig-side">
-                  —<span> / side</span>
-                </div>
-              </div>
-              <div>
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 9px;
-                    color: var(--text3);
-                    margin-bottom: 4px;
-                  "
-                >
-                  REMAINING
-                </div>
-                <div class="signal-time" id="sig-countdown">—</div>
-              </div>
-            </div>
-            <div class="signal-bar-wrap">
-              <div class="signal-bar" id="sig-bar" style="width: 0%"></div>
-            </div>
-            <div class="signal-meta" id="sig-meta">No decision yet</div>
-            <div class="siren-override-badge" id="siren-badge">
-              <i class="fa-solid fa-triangle-exclamation"></i> SIREN PRIORITY
-              OVERRIDE
-            </div>
-          </div>
-        </div>
+<!-- ── MAIN ──────────────────────────────────────────────────────────── -->
+<div id="main">
+  <div class="main-header">
+    <div class="main-title">Source Channels</div>
+    <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text3)" id="uptime-display">uptime: 0s</div>
+  </div>
 
-        <div
-          class="panel-section"
-          style="flex: 1; display: flex; flex-direction: column; min-height: 0"
-        >
-          <div class="section-label">Inference log</div>
-          <div class="ml-log" id="ml-log">Waiting…</div>
+  <div id="empty-state">
+    <div class="e-icon">📱</div>
+    <p>No devices connected yet.<br>
+    ESP32: power on — connects to <code>smarttraffic.local</code> automatically.<br>
+    Phone: open <code>http://&lt;PC-IP&gt;:8000</code> in browser.</p>
+  </div>
+
+  <div id="phones-grid"></div>
+</div>
+
+<!-- ── RIGHT PANEL ───────────────────────────────────────────────────── -->
+<div id="right">
+
+  <div class="intersection">
+    <div class="section-label" style="padding:0 0 10px">Intersection View</div>
+    <div class="int-grid" id="int-grid">
+      <!-- top-left corner -->
+      <div class="road-corner"></div>
+      <!-- top road (side 1) -->
+      <div class="road-v road-cell">
+        <div class="traffic-light">
+          <div class="light-label">Side 1</div>
+          <div class="light-circle" id="light-1"></div>
+          <div class="light-count" id="cnt-1">0</div>
         </div>
       </div>
-
-      <!-- MAIN -->
-      <div id="main">
-        <div class="main-header">
-          <div class="main-title">Source Channels</div>
-          <div
-            style="
-              font-family: var(--font-mono);
-              font-size: 10px;
-              color: var(--text3);
-            "
-            id="uptime-display"
-          >
-            uptime: 0s
-          </div>
+      <!-- top-right corner -->
+      <div class="road-corner"></div>
+      <!-- left road (side 4) -->
+      <div class="road-h road-cell">
+        <div class="traffic-light" style="flex-direction:row;gap:6px">
+          <div class="light-circle" id="light-4"></div>
+          <div><div class="light-label">Side 4</div><div class="light-count" id="cnt-4">0</div></div>
         </div>
-
-        <div id="empty-state">
-          <div class="e-icon"><i class="fa-solid fa-mobile-screen"></i></div>
-          <p>
-            No phones connected yet.<br />
-            Open <code>http://&lt;server-ip&gt;:8000</code> on each phone.<br />
-            Then tap <strong>Connect</strong> and set your side number.
-          </p>
-        </div>
-
-        <div id="phones-grid"></div>
       </div>
-
-      <!-- RIGHT PANEL -->
-      <div id="right">
-        <div class="intersection">
-          <div class="section-label" style="padding: 0 0 10px">
-            Intersection View
-          </div>
-          <div class="int-grid" id="int-grid">
-            <div class="road-corner"></div>
-            <div class="road-v road-cell">
-              <div class="traffic-light">
-                <div class="light-label">Side 1</div>
-                <div class="light-circle" id="light-1"></div>
-                <div class="light-count" id="cnt-1">0</div>
-              </div>
-            </div>
-            <div class="road-corner"></div>
-            <div class="road-h road-cell">
-              <div class="traffic-light" style="flex-direction: row; gap: 6px">
-                <div class="light-circle" id="light-4"></div>
-                <div>
-                  <div class="light-label">Side 4</div>
-                  <div class="light-count" id="cnt-4">0</div>
-                </div>
-              </div>
-            </div>
-            <div class="road-center"></div>
-            <div class="road-h road-cell">
-              <div class="traffic-light" style="flex-direction: row; gap: 6px">
-                <div>
-                  <div class="light-label">Side 2</div>
-                  <div class="light-count" id="cnt-2">0</div>
-                </div>
-                <div class="light-circle" id="light-2"></div>
-              </div>
-            </div>
-            <div class="road-corner"></div>
-            <div class="road-v road-cell">
-              <div class="traffic-light">
-                <div class="light-circle" id="light-3"></div>
-                <div class="light-count" id="cnt-3">0</div>
-                <div class="light-label">Side 3</div>
-              </div>
-            </div>
-            <div class="road-corner"></div>
-          </div>
+      <!-- center -->
+      <div class="road-center"></div>
+      <!-- right road (side 2) -->
+      <div class="road-h road-cell">
+        <div class="traffic-light" style="flex-direction:row;gap:6px">
+          <div><div class="light-label">Side 2</div><div class="light-count" id="cnt-2">0</div></div>
+          <div class="light-circle" id="light-2"></div>
         </div>
-
-        <div class="scores-section">
-          <div class="section-label">Priority scores</div>
-          <div id="score-rows">
-            <div class="score-row" id="srow-1">
-              <div class="score-side">1</div>
-              <div class="score-bar-wrap">
-                <div class="score-bar-fill" id="sbar-1" style="width: 0%"></div>
-              </div>
-              <div class="score-num" id="snum-1">0</div>
-              <div class="score-siren-flag" id="sflag-1"></div>
-            </div>
-            <div class="score-row" id="srow-2">
-              <div class="score-side">2</div>
-              <div class="score-bar-wrap">
-                <div class="score-bar-fill" id="sbar-2" style="width: 0%"></div>
-              </div>
-              <div class="score-num" id="snum-2">0</div>
-              <div class="score-siren-flag" id="sflag-2"></div>
-            </div>
-            <div class="score-row" id="srow-3">
-              <div class="score-side">3</div>
-              <div class="score-bar-wrap">
-                <div class="score-bar-fill" id="sbar-3" style="width: 0%"></div>
-              </div>
-              <div class="score-num" id="snum-3">0</div>
-              <div class="score-siren-flag" id="sflag-3"></div>
-            </div>
-            <div class="score-row" id="srow-4">
-              <div class="score-side">4</div>
-              <div class="score-bar-wrap">
-                <div class="score-bar-fill" id="sbar-4" style="width: 0%"></div>
-              </div>
-              <div class="score-num" id="snum-4">0</div>
-              <div class="score-siren-flag" id="sflag-4"></div>
-            </div>
-          </div>
+      </div>
+      <!-- bottom-left corner -->
+      <div class="road-corner"></div>
+      <!-- bottom road (side 3) -->
+      <div class="road-v road-cell">
+        <div class="traffic-light">
+          <div class="light-circle" id="light-3"></div>
+          <div class="light-count" id="cnt-3">0</div>
+          <div class="light-label">Side 3</div>
         </div>
+      </div>
+      <!-- bottom-right corner -->
+      <div class="road-corner"></div>
+    </div>
+  </div>
 
-        <div class="event-log-section">
-          <div class="section-label">Event log</div>
-          <div class="event-log" id="event-log"></div>
-        </div>
+  <div class="scores-section">
+    <div class="section-label">Priority scores</div>
+    <div id="score-rows">
+      <div class="score-row" id="srow-1">
+        <div class="score-side">1</div>
+        <div class="score-bar-wrap"><div class="score-bar-fill" id="sbar-1" style="width:0%"></div></div>
+        <div class="score-num" id="snum-1">0</div>
+        <div class="score-siren-flag" id="sflag-1"></div>
+      </div>
+      <div class="score-row" id="srow-2">
+        <div class="score-side">2</div>
+        <div class="score-bar-wrap"><div class="score-bar-fill" id="sbar-2" style="width:0%"></div></div>
+        <div class="score-num" id="snum-2">0</div>
+        <div class="score-siren-flag" id="sflag-2"></div>
+      </div>
+      <div class="score-row" id="srow-3">
+        <div class="score-side">3</div>
+        <div class="score-bar-wrap"><div class="score-bar-fill" id="sbar-3" style="width:0%"></div></div>
+        <div class="score-num" id="snum-3">0</div>
+        <div class="score-siren-flag" id="sflag-3"></div>
+      </div>
+      <div class="score-row" id="srow-4">
+        <div class="score-side">4</div>
+        <div class="score-bar-wrap"><div class="score-bar-fill" id="sbar-4" style="width:0%"></div></div>
+        <div class="score-num" id="snum-4">0</div>
+        <div class="score-siren-flag" id="sflag-4"></div>
       </div>
     </div>
-
-    <script>
-      // State
-      let ws = null;
-      let phones = {};
-      let sirenCount = 0;
-      let cycleCount = 0;
-      let startTime = null;
-      let uptimeId = null;
-
-      let sigTotal = 0;
-      let sigRemain = 0;
-      let sigSide = null;
-      let sigTimer = null;
-
-      const waveBufs = {};
-
-      // Theme toggle
-      const themeToggle = document.getElementById("theme-toggle");
-      const body = document.body;
-      const icon = themeToggle.querySelector("i");
-
-      if (localStorage.getItem("theme") === "light") {
-        body.classList.add("light-theme");
-        icon.classList.remove("fa-moon");
-        icon.classList.add("fa-sun");
-      }
-
-      themeToggle.addEventListener("click", () => {
-        body.classList.toggle("light-theme");
-        if (body.classList.contains("light-theme")) {
-          localStorage.setItem("theme", "light");
-          icon.classList.remove("fa-moon");
-          icon.classList.add("fa-sun");
-        } else {
-          localStorage.setItem("theme", "dark");
-          icon.classList.remove("fa-sun");
-          icon.classList.add("fa-moon");
-        }
-      });
-
-      // Clock
-      setInterval(() => {
-        document.getElementById("clock").textContent =
-          new Date().toLocaleTimeString("en-GB");
-      }, 1000);
-
-      // Connection
-      function connectManager() {
-        let url = document.getElementById("ws-url").value.trim();
-        if (!url) return;
-        if (!url.startsWith("ws"))
-          url = "ws://" + url.replace(/^https?:\/\//, "") + ":8765";
-        document.getElementById("ws-url").value = url;
-
-        ws = new WebSocket(url);
-        setDot("connecting", "Connecting…");
-
-        ws.onopen = () => {
-          ws.send(JSON.stringify({ role: "manager" }));
-          setDot("ok", "Connected");
-          document.getElementById("btn-connect").style.display = "none";
-          document.getElementById("btn-disconnect").style.display = "";
-          document.getElementById("btn-start-all").disabled = false;
-          document.getElementById("btn-stop-all").disabled = false;
-          startTime = Date.now();
-          uptimeId = setInterval(updateUptime, 1000);
-          addEvent("Connected to server", "ev-join");
-        };
-
-        ws.onmessage = (e) => handleMsg(JSON.parse(e.data));
-
-        ws.onclose = () => {
-          setDot("err", "Disconnected");
-          document.getElementById("btn-connect").style.display = "";
-          document.getElementById("btn-disconnect").style.display = "none";
-          document.getElementById("btn-start-all").disabled = true;
-          document.getElementById("btn-stop-all").disabled = true;
-          clearInterval(uptimeId);
-          addEvent("Disconnected from server", "ev-siren");
-        };
-
-        ws.onerror = () => setDot("err", "Error");
-      }
-
-      function disconnectManager() {
-        if (ws) ws.close();
-      }
-
-      function setDot(cls, lbl) {
-        document.getElementById("ws-dot").className = "ws-dot " + cls;
-        document.getElementById("ws-label").textContent = lbl;
-      }
-
-      // Message handler
-      function handleMsg(d) {
-        switch (d.type) {
-          case "init":
-            d.phones.forEach((p) =>
-              addPhone(p.phone_id, p.name, p.side, p.recording),
-            );
-            const chip = document.getElementById("yamnet-chip");
-            chip.textContent = d.yamnet_ready ? "YAMNet ✓" : "YAMNet —";
-            chip.className = "yamnet-chip" + (d.yamnet_ready ? " ready" : "");
-            break;
-          case "phone_joined":
-            addPhone(d.phone_id, d.name, d.side, false);
-            break;
-          case "phone_left":
-            removePhone(d.phone_id);
-            break;
-          case "recording_state":
-            setRecording(d.phone_id, d.recording);
-            break;
-          case "level":
-            setLevel(d.phone_id, d.rms);
-            break;
-          case "audio_result":
-            handleAudioResult(d);
-            break;
-          case "signal_decision":
-            handleDecision(d);
-            break;
-        }
-        updateStats();
-      }
-
-      // Phone cards
-      function addPhone(id, name, side, recording) {
-        phones[id] = {
-          name,
-          side,
-          recording,
-          rms: 0,
-          siren_score: 0,
-          siren_active: false,
-        };
-        renderCard(id);
-        document.getElementById("empty-state").style.display = "none";
-        addEvent(`${name} joined — Side ${side}`, "ev-join");
-        updateStats();
-      }
-
-      function removePhone(id) {
-        const el = document.getElementById("card-" + id);
-        if (el) el.remove();
-        const name = phones[id]?.name || id;
-        delete phones[id];
-        delete waveBufs[id];
-        if (Object.keys(phones).length === 0)
-          document.getElementById("empty-state").style.display = "";
-        addEvent(`${name} disconnected`, "");
-        updateStats();
-      }
-
-      function renderCard(id) {
-        const p = phones[id];
-        const grid = document.getElementById("phones-grid");
-        const card = document.createElement("div");
-        card.className = "phone-card";
-        card.id = "card-" + id;
-        card.innerHTML = `
-            <div class="pc-head">
-                <div class="pc-icon"><i class="fa-solid fa-mobile-screen"></i></div>
-                <div class="pc-info">
-                    <div class="pc-name">${p.name}</div>
-                    <div class="pc-meta">${id}</div>
-                </div>
-                <div class="pc-badges">
-                    <div class="badge badge-side">SIDE ${p.side}</div>
-                    <div class="badge badge-idle" id="rbadge-${id}">IDLE</div>
-                    <div class="badge badge-siren" id="sbadge-${id}" style="display:none"><i class="fa-solid fa-triangle-exclamation"></i> SIREN</div>
-                </div>
-            </div>
-            <canvas class="pc-canvas" id="cv-${id}" width="560" height="88"></canvas>
-            <div class="level-wrap"><div class="level-fill" id="lv-${id}"></div></div>
-            <div class="siren-row">
-                <span style="font-size:9px;color:var(--text3)">SIREN</span>
-                <div class="siren-score-bar"><div class="siren-score-fill" id="sf-${id}" style="width:0%"></div></div>
-                <div class="siren-score-num" id="sn-${id}">0.000</div>
-                <span class="siren-label" id="sl-${id}"></span>
-            </div>
-            <div class="pc-result" id="res-${id}"></div>
-            <div class="pc-actions">
-                <button class="pc-btn start-btn" id="sbtn-${id}" onclick="sendCmd('start','${id}')">▶ Start</button>
-                <button class="pc-btn stop-btn"  id="xbtn-${id}" onclick="sendCmd('stop','${id}')" style="display:none">■ Stop</button>
-            </div>`;
-        grid.appendChild(card);
-        startWave(id);
-      }
-
-      function startWave(id) {
-        waveBufs[id] = new Float32Array(100).fill(0);
-        function draw() {
-          const cv = document.getElementById("cv-" + id);
-          if (!cv) return;
-          requestAnimationFrame(draw);
-          const ctx = cv.getContext("2d"),
-            W = cv.width,
-            H = cv.height;
-          const style = getComputedStyle(document.body);
-          ctx.fillStyle = style.getPropertyValue("--s2").trim();
-          ctx.fillRect(0, 0, W, H);
-          const buf = waveBufs[id],
-            p = phones[id];
-          buf.copyWithin(0, 1);
-          buf[buf.length - 1] =
-            p?.rms > 0
-              ? (Math.random() - 0.5) * p.rms * 5
-              : (Math.random() - 0.5) * 0.005;
-          const isRec = p?.recording,
-            isSiren = p?.siren_active;
-          ctx.strokeStyle = isSiren
-            ? style.getPropertyValue("--red").trim()
-            : isRec
-              ? style.getPropertyValue("--green").trim()
-              : style.getPropertyValue("--border2").trim();
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          for (let i = 0; i < buf.length; i++) {
-            const x = (i / buf.length) * W,
-              y = H / 2 + buf[i] * H * 2;
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-        }
-        draw();
-      }
-
-      function setRecording(id, rec) {
-        if (!phones[id]) return;
-        phones[id].recording = rec;
-        const card = document.getElementById("card-" + id);
-        const rbadge = document.getElementById("rbadge-" + id);
-        const sbtn = document.getElementById("sbtn-" + id);
-        const xbtn = document.getElementById("xbtn-" + id);
-        if (card) card.classList.toggle("recording", rec);
-        if (rbadge) {
-          rbadge.className = "badge " + (rec ? "badge-rec" : "badge-idle");
-          rbadge.textContent = rec ? "REC" : "IDLE";
-        }
-        if (sbtn) sbtn.style.display = rec ? "none" : "";
-        if (xbtn) xbtn.style.display = rec ? "" : "none";
-        updateStats();
-      }
-
-      function setLevel(id, rms) {
-        if (!phones[id]) return;
-        phones[id].rms = rms;
-        const lv = document.getElementById("lv-" + id);
-        if (!lv) return;
-        const pct = Math.min(100, rms * 500);
-        lv.style.width = pct + "%";
-        lv.className = "level-fill" + (rms > 0.15 ? " hot" : "");
-      }
-
-      function handleAudioResult(d) {
-        if (!phones[d.phone_id]) return;
-        phones[d.phone_id].rms = d.rms;
-        phones[d.phone_id].siren_score = d.siren_score;
-        phones[d.phone_id].siren_active = d.siren_active;
-        setLevel(d.phone_id, d.rms);
-
-        const sf = document.getElementById("sf-" + d.phone_id);
-        const sn = document.getElementById("sn-" + d.phone_id);
-        const sl = document.getElementById("sl-" + d.phone_id);
-        const card = document.getElementById("card-" + d.phone_id);
-        const sbadge = document.getElementById("sbadge-" + d.phone_id);
-        const res = document.getElementById("res-" + d.phone_id);
-
-        if (sf) {
-          sf.style.width = Math.min(100, d.siren_score * 100) + "%";
-          sf.style.background = d.siren_active
-            ? "var(--red)"
-            : d.siren_score > 0.15
-              ? "var(--amber)"
-              : "var(--text3)";
-        }
-        if (sn) sn.textContent = d.siren_score.toFixed(3);
-        if (sl) sl.textContent = d.siren_label || "";
-        if (card) card.classList.toggle("siren-active", d.siren_active);
-        if (sbadge) sbadge.style.display = d.siren_active ? "" : "none";
-
-        if (res && d.siren_alert) {
-          sirenCount++;
-          res.style.display = "block";
-          res.className = "pc-result siren-result";
-          res.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> SIREN: ${d.siren_label} (${d.siren_score.toFixed(3)})`;
-          addEvent(
-            `SIREN on Side ${d.side}: ${d.siren_label} ${d.siren_score.toFixed(3)}`,
-            "ev-siren",
-          );
-          logML(
-            `SIREN [Side ${d.side}] ${d.siren_label} score=${d.siren_score.toFixed(3)}`,
-            true,
-          );
-        } else if (res && !d.siren_active) {
-          setTimeout(() => {
-            if (res) {
-              res.style.display = "none";
-              res.className = "pc-result";
-            }
-          }, 5000);
-        }
-
-        logML(
-          `[${d.phone_id}] rms=${d.rms}  siren=${d.siren_score.toFixed(3)}  top1=${d.top1_label}`,
-          false,
-        );
-        updateStats();
-      }
-
-      function handleDecision(d) {
-        cycleCount++;
-        document.getElementById("stat-cycles").textContent = cycleCount;
-
-        // INTERSECTION LIGHTS + COUNTERS
-        // RESET ALL LIGHTS FIRST
-        for (let s = 1; s <= 4; s++) {
-          const light = document.getElementById(`light-${s}`);
-          const count = document.getElementById(`cnt-${s}`);
-
-          if (!light) continue;
-
-          light.classList.remove("green-on", "red-on");
-
-          if (s === Number(d.open_side)) {
-            light.classList.add("green-on");
-            count.textContent = d.green_time;
-            count.classList.add("green-text");
-          } else {
-            light.classList.add("red-on");
-            count.textContent = "0";
-            count.classList.remove("green-text");
-          }
-        }
-
-        // SCORE PROCESSING
-        const scores = d.scores || {};
-
-        let sideScores = {};
-
-        // Supports BOTH formats:
-        // {phone_id: score}
-        // {1: score, 2: score, 3: score, 4: score}
-        Object.entries(scores).forEach(([key, score]) => {
-          const numericSide = parseInt(key);
-
-          if (numericSide >= 1 && numericSide <= 4) {
-            sideScores[numericSide] = score;
-            return;
-          }
-
-          const side = phones[key]?.side;
-
-          if (side) {
-            sideScores[side] = score;
-          }
-        });
-
-        const maxScore = Math.max(1, ...Object.values(sideScores));
-
-        for (let s = 1; s <= 4; s++) {
-          const score = sideScores[s] || 0;
-
-          const bar = document.getElementById("sbar-" + s);
-          const num = document.getElementById("snum-" + s);
-          const flag = document.getElementById("sflag-" + s);
-
-          const winning = s === d.open_side;
-          const sirenWin = winning && d.siren_override;
-
-          if (bar) {
-            bar.style.width = Math.min(100, (score / maxScore) * 100) + "%";
-
-            bar.className =
-              "score-bar-fill" +
-              (sirenWin ? " siren-win" : winning ? " winning" : "");
-          }
-
-          if (num) {
-            num.innerHTML =
-              score > 999
-                ? '<i class="fa-solid fa-triangle-exclamation"></i>'
-                : Math.round(score);
-          }
-
-          if (flag) {
-            flag.innerHTML = d.siren_sides?.includes(s)
-              ? '<i class="fa-solid fa-triangle-exclamation"></i>'
-              : "";
-          }
-        }
-
-        sigSide = d.open_side;
-        sigTotal = d.green_time;
-        sigRemain = d.green_time;
-
-        clearInterval(sigTimer);
-
-        updateSigDisplay();
-
-        sigTimer = setInterval(() => {
-          sigRemain = Math.max(0, sigRemain - 1);
-
-          for (let s = 1; s <= 4; s++) {
-            const light = document.getElementById(`light-${s}`);
-            const count = document.getElementById(`cnt-${s}`);
-
-            light.classList.remove("green-on", "red-on");
-
-            if (s === sigSide && sigRemain > 0) {
-              light.classList.add("green-on");
-              count.textContent = sigRemain;
-              count.classList.add("green-text");
-            } else {
-              light.classList.add("red-on");
-              count.textContent = "0";
-              count.classList.remove("green-text");
-            }
-          }
-
-          updateSigDisplay();
-
-          if (sigRemain === 0) {
-            clearInterval(sigTimer);
-
-            // keep all non-active sides red
-            for (let s = 1; s <= 4; s++) {
-              const light = document.getElementById(`light-${s}`);
-              const count = document.getElementById(`cnt-${s}`);
-
-              light.classList.remove("green-on");
-              light.classList.add("red-on");
-
-              count.textContent = "0";
-              count.classList.remove("green-text");
-            }
-          }
-        }, 1000);
-
-        document
-          .getElementById("siren-badge")
-          .classList.toggle("active", !!d.siren_override);
-
-        document.getElementById("sig-meta").textContent = d.siren_override
-          ? `⚡ Siren priority override — ${d.green_time}s green`
-          : `Normal cycle — ${d.green_time}s green`;
-
-        addEvent(
-          `GREEN → Side ${d.open_side} for ${d.green_time}s${
-            d.siren_override ? " (SIREN)" : ""
-          }`,
-          "ev-signal",
-        );
-      }
-
-      function updateSigDisplay() {
-        document.getElementById("sig-side").innerHTML = sigSide
-          ? `${sigSide}<span> / side</span>`
-          : "—<span> / side</span>";
-        document.getElementById("sig-countdown").textContent =
-          sigRemain > 0 ? sigRemain + "s" : "—";
-        document.getElementById("sig-bar").style.width =
-          sigTotal > 0 ? (sigRemain / sigTotal) * 100 + "%" : "0%";
-      }
-
-      function sendCmd(cmd, phoneId) {
-        if (ws && ws.readyState === 1)
-          ws.send(JSON.stringify({ cmd, phone_id: phoneId }));
-      }
-      function sendAll(cmd) {
-        if (ws && ws.readyState === 1)
-          ws.send(JSON.stringify({ cmd: cmd + "_all" }));
-      }
-
-      function updateStats() {
-        const ids = Object.keys(phones);
-        document.getElementById("stat-phones").textContent = ids.length;
-        document.getElementById("stat-rec").textContent = ids.filter(
-          (id) => phones[id].recording,
-        ).length;
-        document.getElementById("stat-sirens").textContent = sirenCount;
-      }
-
-      function updateUptime() {
-        if (!startTime) return;
-        const s = Math.floor((Date.now() - startTime) / 1000);
-        const m = Math.floor(s / 60),
-          sec = s % 60;
-        document.getElementById("uptime-display").textContent =
-          "uptime: " + (m ? `${m}m ${sec}s` : `${s}s`);
-      }
-
-      function logML(text, isSiren) {
-        const log = document.getElementById("ml-log");
-        const ts = new Date().toLocaleTimeString("en-GB");
-        const div = document.createElement("div");
-        div.className = "entry" + (isSiren ? " siren" : "");
-        div.textContent = `[${ts}] ${text}`;
-        if (log.firstChild) log.insertBefore(div, log.firstChild);
-        else log.appendChild(div);
-        while (log.children.length > 80) log.removeChild(log.lastChild);
-      }
-
-      function addEvent(text, cls) {
-        const log = document.getElementById("event-log");
-        const ts = new Date().toLocaleTimeString("en-GB");
-        const div = document.createElement("div");
-        div.className = "event-item " + (cls || "");
-        div.innerHTML = `<span class="event-time">${ts}</span><span class="event-body">${text}</span>`;
-        log.insertBefore(div, log.firstChild);
-        while (log.children.length > 50) log.removeChild(log.lastChild);
-      }
-
-      window.onload = () => {
-        const h = location.hostname;
-        if (h && h !== "localhost" && h !== "127.0.0.1")
-          document.getElementById("ws-url").value = `ws://${h}:8765`;
-      };
-    </script>
-  </body>
+  </div>
+
+  <div class="event-log-section">
+    <div class="section-label">Event log</div>
+    <div class="event-log" id="event-log"></div>
+  </div>
+
+</div><!-- layout -->
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let ws = null;
+let phones = {};         // phone_id → {name, side, recording, rms, siren_score, siren_active}
+let sirenCount = 0;
+let cycleCount = 0;
+let startTime  = null;
+let uptimeId   = null;
+
+// Signal countdown
+let sigTotal   = 0;
+let sigRemain  = 0;
+let sigSide    = null;
+let sigTimer   = null;
+
+// Wave buffers per phone
+const waveBufs = {};
+
+// ── Clock ──────────────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-GB');
+}, 1000);
+
+// ── Connection ─────────────────────────────────────────────────────────────
+function connectManager() {
+  let url = document.getElementById('ws-url').value.trim();
+  if (!url) return;
+  if (!url.startsWith('ws')) url = 'ws://' + url.replace(/^https?:\/\//, '') + ':8765';
+  document.getElementById('ws-url').value = url;
+
+  ws = new WebSocket(url);
+  setDot('connecting', 'Connecting…');
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ role: 'manager' }));
+    setDot('ok', 'Connected');
+    document.getElementById('btn-connect').style.display = 'none';
+    document.getElementById('btn-disconnect').style.display = '';
+    document.getElementById('btn-start-all').disabled = false;
+    document.getElementById('btn-stop-all').disabled  = false;
+    startTime = Date.now();
+    uptimeId  = setInterval(updateUptime, 1000);
+    addEvent('Connected to server', 'ev-join');
+  };
+
+  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+
+  ws.onclose = () => {
+    setDot('err', 'Disconnected');
+    document.getElementById('btn-connect').style.display = '';
+    document.getElementById('btn-disconnect').style.display = 'none';
+    document.getElementById('btn-start-all').disabled = true;
+    document.getElementById('btn-stop-all').disabled  = true;
+    clearInterval(uptimeId);
+    addEvent('Disconnected from server', 'ev-siren');
+  };
+
+  ws.onerror = () => setDot('err', 'Error');
+}
+
+function disconnectManager() { if (ws) ws.close(); }
+
+function setDot(cls, lbl) {
+  document.getElementById('ws-dot').className = 'ws-dot ' + cls;
+  document.getElementById('ws-label').textContent = lbl;
+}
+
+// ── Message handler ────────────────────────────────────────────────────────
+function handleMsg(d) {
+  switch (d.type) {
+    case 'init':
+      d.phones.forEach(p => addPhone(p.phone_id, p.name, p.side, p.recording));
+      const chip = document.getElementById('yamnet-chip');
+      chip.textContent = d.yamnet_ready ? 'YAMNet ✓' : 'YAMNet —';
+      chip.className   = 'yamnet-chip' + (d.yamnet_ready ? ' ready' : '');
+      break;
+    case 'phone_joined':  addPhone(d.phone_id, d.name, d.side, false); break;
+    case 'phone_left':    removePhone(d.phone_id); break;
+    case 'recording_state': setRecording(d.phone_id, d.recording); break;
+    case 'level':         setLevel(d.phone_id, d.rms); break;
+    case 'audio_result':  handleAudioResult(d); break;
+    case 'signal_decision': handleDecision(d); break;
+  }
+  updateStats();
+}
+
+// ── Phone cards ────────────────────────────────────────────────────────────
+function addPhone(id, name, side, recording) {
+  const isHW = id.startsWith('esp32');
+  phones[id] = { name, side, recording: isHW ? true : recording, rms: 0, siren_score: 0, siren_active: false };
+  renderCard(id);
+  document.getElementById('empty-state').style.display = 'none';
+  addEvent(`${name} joined — Side ${side}`, 'ev-join');
+  updateStats();
+}
+
+function removePhone(id) {
+  const el = document.getElementById('card-' + id);
+  if (el) el.remove();
+  const name = phones[id]?.name || id;
+  delete phones[id];
+  delete waveBufs[id];
+  if (Object.keys(phones).length === 0)
+    document.getElementById('empty-state').style.display = '';
+  addEvent(`${name} disconnected`, '');
+  updateStats();
+}
+
+function renderCard(id) {
+  const p    = phones[id];
+  const grid = document.getElementById('phones-grid');
+  const card = document.createElement('div');
+  card.className = 'phone-card';
+  card.id = 'card-' + id;
+  const isHW = id.startsWith('esp32');
+  const icon = isHW ? '🔌' : '📱';
+  const recBadge = isHW
+    ? `<div class="badge badge-side" style="border-color:var(--green);color:var(--green)">HW MIC</div>`
+    : `<div class="badge badge-idle" id="rbadge-${id}">IDLE</div>`;
+  const actions = isHW
+    ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text3);padding:4px 0">INMP441 hardware mic — always streaming</div>`
+    : `<div class="pc-actions">
+         <button class="pc-btn start-btn" id="sbtn-${id}" onclick="sendCmd('start','${id}')">▶ Start</button>
+         <button class="pc-btn stop-btn"  id="xbtn-${id}" onclick="sendCmd('stop','${id}')" style="display:none">■ Stop</button>
+       </div>`;
+  card.innerHTML = `
+    <div class="pc-head">
+      <div class="pc-icon">${icon}</div>
+      <div class="pc-info">
+        <div class="pc-name">${p.name}</div>
+        <div class="pc-meta">${id}</div>
+      </div>
+      <div class="pc-badges">
+        <div class="badge badge-side">SIDE ${p.side}</div>
+        ${recBadge}
+        <div class="badge badge-siren" id="sbadge-${id}" style="display:none">🚨 SIREN</div>
+      </div>
+    </div>
+    <canvas class="pc-canvas" id="cv-${id}" width="560" height="88"></canvas>
+    <div class="level-wrap"><div class="level-fill" id="lv-${id}"></div></div>
+    <div class="siren-row">
+      <span style="font-size:9px;color:var(--text3)">SIREN</span>
+      <div class="siren-score-bar"><div class="siren-score-fill" id="sf-${id}" style="width:0%"></div></div>
+      <div class="siren-score-num" id="sn-${id}">0.000</div>
+      <span class="siren-label" id="sl-${id}"></span>
+    </div>
+    <div class="pc-result" id="res-${id}"></div>
+    ${actions}`;
+  grid.appendChild(card);
+  startWave(id);
+}
+
+// ── Waveform ───────────────────────────────────────────────────────────────
+function startWave(id) {
+  waveBufs[id] = new Float32Array(100).fill(0);
+  function draw() {
+    const cv = document.getElementById('cv-' + id);
+    if (!cv) return;
+    requestAnimationFrame(draw);
+    const ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    ctx.fillStyle = '#0f1116'; ctx.fillRect(0, 0, W, H);
+    const buf = waveBufs[id], p = phones[id];
+    buf.copyWithin(0, 1);
+    buf[buf.length - 1] = p?.rms > 0 ? (Math.random() - 0.5) * p.rms * 5 : (Math.random() - 0.5) * 0.005;
+    const isRec   = p?.recording;
+    const isSiren = p?.siren_active;
+    ctx.strokeStyle = isSiren ? '#ff3355' : isRec ? '#00ff88' : '#1e2235';
+    ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let i = 0; i < buf.length; i++) {
+      const x = i / buf.length * W, y = H / 2 + buf[i] * H * 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  draw();
+}
+
+// ── Card updates ───────────────────────────────────────────────────────────
+function setRecording(id, rec) {
+  if (!phones[id]) return;
+  phones[id].recording = rec;
+  const card  = document.getElementById('card-' + id);
+  const rbadge = document.getElementById('rbadge-' + id);
+  const sbtn  = document.getElementById('sbtn-' + id);
+  const xbtn  = document.getElementById('xbtn-' + id);
+  if (card) {
+    card.classList.toggle('recording', rec);
+  }
+  if (rbadge) {
+    rbadge.className = 'badge ' + (rec ? 'badge-rec' : 'badge-idle');
+    rbadge.textContent = rec ? 'REC' : 'IDLE';
+  }
+  if (sbtn) sbtn.style.display = rec ? 'none' : '';
+  if (xbtn) xbtn.style.display = rec ? '' : 'none';
+  updateStats();
+}
+
+function setLevel(id, rms) {
+  if (!phones[id]) return;
+  phones[id].rms = rms;
+  const lv = document.getElementById('lv-' + id);
+  if (!lv) return;
+  const pct = Math.min(100, rms * 500);
+  lv.style.width = pct + '%';
+  lv.className = 'level-fill' + (rms > 0.15 ? ' hot' : '');
+}
+
+function handleAudioResult(d) {
+  if (!phones[d.phone_id]) return;
+  phones[d.phone_id].rms          = d.rms;
+  phones[d.phone_id].siren_score  = d.siren_score;
+  phones[d.phone_id].siren_active = d.siren_active;
+
+  setLevel(d.phone_id, d.rms);
+
+  // Siren score bar
+  const sf   = document.getElementById('sf-'  + d.phone_id);
+  const sn   = document.getElementById('sn-'  + d.phone_id);
+  const sl   = document.getElementById('sl-'  + d.phone_id);
+  const card = document.getElementById('card-' + d.phone_id);
+  const sbadge = document.getElementById('sbadge-' + d.phone_id);
+  const res  = document.getElementById('res-' + d.phone_id);
+
+  if (sf) {
+    sf.style.width      = Math.min(100, d.siren_score * 100) + '%';
+    sf.style.background = d.siren_active ? '#ff3355' : d.siren_score > 0.15 ? '#ffaa00' : '#454d66';
+  }
+  if (sn) sn.textContent = d.siren_score.toFixed(3);
+  if (sl) sl.textContent = d.siren_label || '';
+
+  if (card) card.classList.toggle('siren-active', d.siren_active);
+  if (sbadge) sbadge.style.display = d.siren_active ? '' : 'none';
+
+  if (res && d.siren_alert) {
+    sirenCount++;
+    res.style.display = 'block';
+    res.className     = 'pc-result siren-result';
+    res.textContent   = `🚨 SIREN: ${d.siren_label} (${d.siren_score.toFixed(3)})`;
+    addEvent(`SIREN on Side ${d.side}: ${d.siren_label} ${d.siren_score.toFixed(3)}`, 'ev-siren');
+    logML(`SIREN [Side ${d.side}] ${d.siren_label} score=${d.siren_score.toFixed(3)}`, true);
+  } else if (res && !d.siren_active) {
+    setTimeout(() => {
+      if (res) { res.style.display = 'none'; res.className = 'pc-result'; }
+    }, 5000);
+  }
+
+  logML(`[${d.phone_id}] rms=${d.rms}  siren=${d.siren_score.toFixed(3)}  top1=${d.top1_label}`, false);
+  updateStats();
+}
+
+// ── Signal decision ────────────────────────────────────────────────────────
+function handleDecision(d) {
+  cycleCount++;
+  document.getElementById('stat-cycles').textContent = cycleCount;
+
+  // Intersection lights
+  for (let s = 1; s <= 4; s++) {
+    const lc = document.getElementById('light-' + s);
+    const cnt = document.getElementById('cnt-' + s);
+    if (lc) {
+      lc.className = 'light-circle ' + (s === d.open_side ? 'green-on' : 'red-on');
+    }
+  }
+
+  // Score bars
+  const scores  = d.scores || {};
+  const maxScore = Math.max(...Object.values(scores), 1);
+  // Map phone_id scores to sides
+  const sideScores = {};
+  Object.entries(scores).forEach(([pid, score]) => {
+    const side = phones[pid]?.side;
+    if (side) sideScores[side] = score;
+  });
+
+  for (let s = 1; s <= 4; s++) {
+    const score   = sideScores[s] || 0;
+    const bar     = document.getElementById('sbar-' + s);
+    const num     = document.getElementById('snum-' + s);
+    const flag    = document.getElementById('sflag-' + s);
+    const winning = s === d.open_side;
+    const sirenW  = winning && d.siren_override;
+    if (bar) {
+      bar.style.width  = Math.min(100, (score / maxScore) * 100) + '%';
+      bar.className    = 'score-bar-fill' + (sirenW ? ' siren-win' : winning ? ' winning' : '');
+    }
+    if (num) num.textContent = score > 999 ? '🚨' : Math.round(score);
+    if (flag) flag.textContent = d.siren_sides?.includes(s) ? '🚨' : '';
+  }
+
+  // Signal display
+  sigSide   = d.open_side;
+  sigTotal  = d.green_time;
+  sigRemain = d.green_time;
+  clearInterval(sigTimer);
+  updateSigDisplay();
+  sigTimer = setInterval(() => {
+    sigRemain = Math.max(0, sigRemain - 1);
+    updateSigDisplay();
+    if (sigRemain === 0) clearInterval(sigTimer);
+  }, 1000);
+
+  // Siren override badge
+  const badge = document.getElementById('siren-badge');
+  badge.classList.toggle('active', !!d.siren_override);
+
+  const meta = document.getElementById('sig-meta');
+  meta.textContent = d.siren_override
+    ? `⚡ Siren priority override — ${d.green_time}s green`
+    : `Normal cycle — ${d.green_time}s green`;
+
+  addEvent(`GREEN → Side ${d.open_side} for ${d.green_time}s${d.siren_override ? ' (SIREN)' : ''}`, 'ev-signal');
+}
+
+function updateSigDisplay() {
+  const sideEl = document.getElementById('sig-side');
+  const cdEl   = document.getElementById('sig-countdown');
+  const bar    = document.getElementById('sig-bar');
+  if (sideEl) sideEl.innerHTML = sigSide ? `${sigSide}<span> / side</span>` : '—<span> / side</span>';
+  if (cdEl)   cdEl.textContent = sigRemain > 0 ? sigRemain + 's' : '—';
+  if (bar)    bar.style.width  = sigTotal > 0 ? (sigRemain / sigTotal * 100) + '%' : '0%';
+}
+
+// ── Commands ───────────────────────────────────────────────────────────────
+function sendCmd(cmd, phoneId) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd, phone_id: phoneId }));
+}
+function sendAll(cmd) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: cmd + '_all' }));
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats() {
+  const ids = Object.keys(phones);
+  document.getElementById('stat-phones').textContent = ids.length;
+  document.getElementById('stat-rec').textContent    = ids.filter(id => phones[id].recording).length;
+  document.getElementById('stat-sirens').textContent = sirenCount;
+}
+
+function updateUptime() {
+  if (!startTime) return;
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  document.getElementById('uptime-display').textContent =
+    'uptime: ' + (m ? `${m}m ${sec}s` : `${s}s`);
+}
+
+// ── ML Log ─────────────────────────────────────────────────────────────────
+function logML(text, isSiren) {
+  const log = document.getElementById('ml-log');
+  const ts  = new Date().toLocaleTimeString('en-GB');
+  const div = document.createElement('div');
+  div.className = 'entry' + (isSiren ? ' siren' : '');
+  div.textContent = `[${ts}] ${text}`;
+  if (log.firstChild) log.insertBefore(div, log.firstChild);
+  else log.appendChild(div);
+  // Trim old entries
+  while (log.children.length > 80) log.removeChild(log.lastChild);
+}
+
+// ── Event log ──────────────────────────────────────────────────────────────
+function addEvent(text, cls) {
+  const log = document.getElementById('event-log');
+  const ts  = new Date().toLocaleTimeString('en-GB');
+  const div = document.createElement('div');
+  div.className = 'event-item ' + (cls || '');
+  div.innerHTML = `<span class="event-time">${ts}</span><span class="event-body">${text}</span>`;
+  log.insertBefore(div, log.firstChild);
+  while (log.children.length > 50) log.removeChild(log.lastChild);
+}
+
+// ── Auto-fill URL + Auto-connect ───────────────────────────────────────────
+window.onload = () => {
+  // Fill correct WebSocket URL based on which host served this page
+  const h = location.hostname;
+  const wsUrl = `ws://${h}:8765`;
+  document.getElementById('ws-url').value = wsUrl;
+
+  // Auto-connect after short delay (lets page fully render first)
+  setTimeout(() => {
+    console.log('[Dashboard] Auto-connecting to', wsUrl);
+    connectManager();
+  }, 800);
+};
+</script>
+</body>
 </html>

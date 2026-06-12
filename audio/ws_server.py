@@ -10,10 +10,21 @@
 import asyncio
 import json
 import logging
+import queue as _queue   # thread-safe queue for audio bridge
 import socket
 import threading
 import time
 import webbrowser
+
+# mDNS — advertises this PC as smarttraffic.local on the network
+# Install: pip install zeroconf
+try:
+    from zeroconf import ServiceInfo, Zeroconf
+    import struct
+    MDNS_AVAILABLE = True
+except ImportError:
+    MDNS_AVAILABLE = False
+    print("[mDNS] zeroconf not installed — run: pip install zeroconf")
 from collections import defaultdict
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -167,7 +178,7 @@ async def _handle_ws(ws):
                 "ws": ws, "name": hello.get("name", f"Phone {_phone_counter}"),
                 "side": side, "recording": False, "rms": 0.0, "chunks": 0,
             }
-            _phone_audio_queues[phone_id] = asyncio.Queue(maxsize=20)
+            _phone_audio_queues[phone_id] = _queue.Queue(maxsize=30)  # thread-safe
             _phone_sides[phone_id]  = side
             _side_to_phone[side]    = phone_id
 
@@ -188,7 +199,7 @@ async def _handle_ws(ws):
                         # Put raw PCM bytes into queue for SideListener
                         try:
                             _phone_audio_queues[phone_id].put_nowait(msg)
-                        except asyncio.QueueFull:
+                        except _queue.Full:
                             pass
                         # Live RMS level every 5 chunks
                         if _phones[phone_id]["chunks"] % 5 == 0:
@@ -221,6 +232,79 @@ async def _handle_ws(ws):
             log.info(f"Phone {phone_id} disconnected")
 
 
+    # ── ESP32 hardware mic ────────────────────────────────────────────────────
+    elif role == "esp32_mic":
+        await _handle_esp32_mic(ws, hello)
+
+    # ── Unknown role ──────────────────────────────────────────────────────────
+    else:
+        log.warning(f"Unknown role: {role}")
+        return
+
+
+async def _handle_esp32_mic(ws, hello: dict):
+    """
+    Handle ESP32 hardware mic connection.
+    ESP32 sends: [1 byte side][raw PCM16 bytes] per packet.
+    We push audio into the same queue that SideListener.feed_audio() reads.
+    Dashboard shows ESP32 units as source channels automatically.
+    """
+    side     = int(hello.get("side", 1))
+    phone_id = f"esp32_side_{side}"
+    name     = f"ESP32 Side {side}"
+
+    log.info(f"ESP32 mic connected — Side {side}")
+
+    async with _lock:
+        _phone_audio_queues[phone_id] = _queue.Queue(maxsize=30)  # thread-safe
+        _phone_sides[phone_id]        = side
+        _side_to_phone[side]          = phone_id
+
+    # Tell ESP32 it's accepted
+    await ws.send(json.dumps({"type": "hello", "side": side}))
+
+    # Tell dashboard a new source appeared
+    await _broadcast({
+        "type"     : "phone_joined",
+        "phone_id" : phone_id,
+        "name"     : name,
+        "side"     : side,
+        "recording": True,    # ESP32 is always recording
+    })
+
+    buf = bytearray()
+    TARGET = 16000 * 2    # accumulate 1 second of 16-bit audio before queuing
+
+    try:
+        async for msg in ws:
+            if not isinstance(msg, bytes) or len(msg) < 2:
+                continue
+
+            # First byte is side number (sent by ESP32 firmware)
+            # — ignore it, we already know the side from hello
+            raw = msg[1:]
+            buf.extend(raw)
+
+            # Accumulate until we have ~1 second then push to queue
+            while len(buf) >= TARGET:
+                chunk = bytes(buf[:TARGET])
+                buf   = buf[TARGET:]
+                try:
+                    _phone_audio_queues[phone_id].put_nowait(chunk)
+                except _queue.Full:
+                    pass   # drop oldest — better than blocking
+
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        async with _lock:
+            _phone_audio_queues.pop(phone_id, None)
+            _phone_sides.pop(phone_id, None)
+            _side_to_phone.pop(side, None)
+        await _broadcast({"type": "phone_left", "phone_id": phone_id})
+        log.info(f"ESP32 Side {side} disconnected")
+
+
 async def _handle_manager_cmd(data: dict):
     cmd      = data.get("cmd")
     phone_id = data.get("phone_id")
@@ -251,7 +335,11 @@ def start_ws_server(base_dir: str):
         _loop = asyncio.new_event_loop()
         asyncio.set_event_loop(_loop)
         _lock = asyncio.Lock()
-        _loop.run_until_complete(_serve(base_dir))
+        try:
+            _loop.run_until_complete(_serve(base_dir))
+        except OSError as e:
+            print(f"[WS] Port {WS_PORT} busy: {e}")
+            print("[WS] Kill old process or change WS_PORT in config.py")
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -273,10 +361,16 @@ def start_ws_server(base_dir: str):
     print(f"  🖥  Manager dash  →  http://{ip}:{MANAGER_HTTP_PORT}")
     print(f"  🔌 WebSocket     →  ws://{ip}:{WS_PORT}")
     print("═" * 60 + "\n")
+    print(f"  🌐 mDNS hostname →  smarttraffic.local")
+    print(f"  ESP32 firmware   →  use smarttraffic.local, no IP needed")
+    print("═" * 60 + "\n")
+
+    # Start mDNS
+    threading.Thread(target=_start_mdns, args=(ip, WS_PORT), daemon=True).start()
 
     # Auto-open manager dashboard in default browser after server starts
     def _open_browser():
-        time.sleep(2)
+        time.sleep(4)   # wait for HTTP + WS servers to be fully ready
         url = f"http://localhost:{MANAGER_HTTP_PORT}"
         print(f"[SYSTEM] Opening dashboard -> {url}")
         webbrowser.open(url)
@@ -284,8 +378,32 @@ def start_ws_server(base_dir: str):
     threading.Thread(target=_open_browser, daemon=True).start()
 
 
+def _start_mdns(ip: str, ws_port: int):
+    """
+    Advertise this PC as smarttraffic.local via mDNS.
+    ESP32 connects to smarttraffic.local:8765 — no IP needed.
+    """
+    if not MDNS_AVAILABLE:
+        return
+    try:
+        ip_bytes = socket.inet_aton(ip)
+        info = ServiceInfo(
+            "_smarttraffic._tcp.local.",
+            "SmartTraffic._smarttraffic._tcp.local.",
+            addresses=[ip_bytes],
+            port=ws_port,
+            properties={"version": "1.0"},
+            server="smarttraffic.local.",
+        )
+        zc = Zeroconf()
+        zc.register_service(info)
+        print(f"[mDNS] Advertising as smarttraffic.local → {ip}:{ws_port}")
+    except Exception as e:
+        print(f"[mDNS] Failed: {e}")
+
+
 async def _serve(base_dir: str):
-    async with websockets.serve(_handle_ws, "0.0.0.0", WS_PORT):
+    async with websockets.serve(_handle_ws, "0.0.0.0", WS_PORT, reuse_address=True):
         await asyncio.Future()   # run forever
 
 
@@ -293,17 +411,16 @@ async def _serve(base_dir: str):
 
 def get_audio_chunk_nowait(phone_id: str):
     """
-    Non-blocking read of one raw PCM bytes chunk from a phone.
-    Returns bytes or None if queue is empty.
+    Thread-safe non-blocking read from the audio queue.
+    Uses queue.Queue (not asyncio.Queue) so bridge thread can call safely.
+    Returns bytes or None if empty.
     """
     q = _phone_audio_queues.get(phone_id)
     if q is None:
         return None
     try:
-        # Safe cross-thread queue.get_nowait via call_soon_threadsafe trick
-        # We use a simpler approach: store items in a plain list guarded by lock
-        return q.get_nowait()
-    except Exception:
+        return q.get_nowait()   # thread-safe — queue.Queue not asyncio.Queue
+    except _queue.Empty:
         return None
 
 def get_connected_phone_ids() -> list:

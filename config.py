@@ -40,7 +40,8 @@ SIREN_DECAY          = 30.0    # seconds siren priority stays active after detec
 CHUNK_DURATION       = 0.975   # seconds of audio per YAMNet inference call
 
 # ── YOLO vehicle detection ────────────────────────────────────────────────────
-MODEL_NAME      = "yolov8l.pt"     # change to "yolov26x.pt" if you have it
+#MODEL_NAME      = "yolov8x.pt"    
+MODEL_NAME      = "yolo26x.pt"     
 VEHICLE_CLASSES = [2, 3, 5, 7]     # COCO: car, motorcycle, bus, truck
 
 # ── Traffic signal logic ──────────────────────────────────────────────────────
