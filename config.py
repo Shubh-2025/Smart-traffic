@@ -8,7 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ── Road images ───────────────────────────────────────────────────────────────
 # Place 1.jpeg … 10.jpeg inside the images/ folder next to main.py
-ALL_IMAGES = [os.path.join(BASE_DIR, "images", f"{i}.jpeg") for i in range(1, 11)]
+ALL_IMAGES = [os.path.join(BASE_DIR, "images", f"{i}.jpeg") for i in range(1, 31)]
 
 # ── MQTT → ESP32 ──────────────────────────────────────────────────────────────
 MQTT_HOST       = "bf10fe86ca344f07b38ce2444db2e9c0.s1.eu.hivemq.cloud"
@@ -40,8 +40,8 @@ SIREN_DECAY          = 30.0    # seconds siren priority stays active after detec
 CHUNK_DURATION       = 0.975   # seconds of audio per YAMNet inference call
 
 # ── YOLO vehicle detection ────────────────────────────────────────────────────
-#MODEL_NAME      = "yolov8x.pt"    
-MODEL_NAME      = "yolo26x.pt"     
+MODEL_NAME      = "yolov8x.pt"    
+#MODEL_NAME      = "yolo26x.pt"     
 VEHICLE_CLASSES = [2, 3, 5, 7]     # COCO: car, motorcycle, bus, truck
 
 # ── Traffic signal logic ──────────────────────────────────────────────────────
