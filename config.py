@@ -41,16 +41,26 @@ SIREN_BLOCKLIST = [
 
 # Require siren to appear in N consecutive chunks before alerting:
 SIREN_CONFIRM_CHUNKS = 2   # ~2 seconds of sustained detection
-# SIREN_THRESHOLD      = 0.25    # score (0-1) to trigger alert — lower = more sensitive
-# Raise threshold slightly:
-SIREN_THRESHOLD = 0.30   # was 0.25
+SIREN_THRESHOLD      = 0.30
 SIREN_COOLDOWN       = 3.0     # seconds between repeated alerts per side
 SIREN_DECAY          = 30.0    # seconds siren priority stays active after detection
 CHUNK_DURATION       = 0.975   # seconds of audio per YAMNet inference call
 
+# ── Ambulance exclusion window ────────────────────────────────────────────────
+# When one side detects a confirmed siren, all *other* sides are suppressed for
+# this many seconds. This prevents the same ambulance being counted as multiple
+# independent events as it travels through the intersection.
+#
+# Rule of thumb: set this to roughly the time it takes the vehicle to clear
+# the intersection (typically 20–45 s depending on intersection size).
+#
+# The owning side automatically renews the window each inference tick while
+# its score stays above threshold, so the lock persists for as long as the
+# ambulance is audible — even if that's longer than this initial value.
+SIREN_EXCLUSION_WINDOW = 30.0  # seconds
+
 # ── YOLO vehicle detection ────────────────────────────────────────────────────
-MODEL_NAME      = "yolov8l.pt"    
-#MODEL_NAME      = "yolo26x.pt"     
+MODEL_NAME      = "yolov8l.pt"
 VEHICLE_CLASSES = [2, 3, 5, 7]     # COCO: car, motorcycle, bus, truck
 
 # ── Traffic signal logic ──────────────────────────────────────────────────────

@@ -7,6 +7,8 @@
 # This module also exposes thread-safe queues so main.py can pull audio
 # chunks and feed them to SideListeners for YAMNet inference.
 
+import psutil
+
 import asyncio
 import json
 import logging
@@ -70,6 +72,22 @@ def _make_handler(directory: str):
 def _run_http(port: int, directory: str):
     HTTPServer(("0.0.0.0", port), _make_handler(directory)).serve_forever()
 
+def get_local_ip():
+    """
+    Return the IP address of the interface that is actually
+    used to reach the network (Wi-Fi/LAN), ignoring VirtualBox,
+    VMware, Hyper-V, etc.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No data is sent; this is only used to determine
+        # which local interface Windows would use.
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
 
@@ -349,10 +367,7 @@ def start_ws_server(base_dir: str):
     threading.Thread(target=_run_http, args=(PHONE_HTTP_PORT, phone_dir),   daemon=True).start()
     threading.Thread(target=_run_http, args=(MANAGER_HTTP_PORT, manager_dir), daemon=True).start()
 
-    try:
-        ip = socket.gethostbyname(socket.gethostname())
-    except Exception:
-        ip = "127.0.0.1"
+    ip = get_local_ip()
 
     print("\n" + "═" * 60)
     print("  Smart Traffic — WebSocket Audio Server")

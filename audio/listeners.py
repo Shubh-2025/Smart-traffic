@@ -14,7 +14,9 @@ from config import (
     YAMNET_SR, CHUNK_DURATION,
     SIREN_THRESHOLD, SIREN_COOLDOWN, SIREN_DECAY,
     SIREN_BLOCKLIST, SIREN_CONFIRM_CHUNKS,
+    SIREN_EXCLUSION_WINDOW,
 )
+from audio.siren_exclusion import exclusion_zone
 from utils.yamnet import infer, normalize, pcm16_to_float32
 
 CHUNK_SAMPLES = int(YAMNET_SR * CHUNK_DURATION)
@@ -32,7 +34,8 @@ class SideListener:
             → updates .siren_active / .siren_score
 
     Public attributes (read by main.py and controller.py):
-        .siren_active   bool   — True while siren is detected
+        .siren_active   bool   — True while siren is detected AND this side
+                                 is not suppressed by the exclusion zone
         .siren_score    float  — latest YAMNet siren score (0-1)
         .best_label     str    — matched siren class name
 
@@ -40,9 +43,16 @@ class SideListener:
         .on_siren_detected(side, score, label, active, is_new_alert)
 
     False-positive mitigation:
-        • SIREN_BLOCKLIST   — suppresses alert when top-1 class is a horn/vehicle sound
-        • SIREN_CONFIRM_CHUNKS — requires N consecutive chunks above threshold (~2 s)
-          before firing, ignoring single short horn blasts
+        • SIREN_BLOCKLIST       — suppresses alert when top-1 class is a
+                                  horn/vehicle sound
+        • SIREN_CONFIRM_CHUNKS  — requires N consecutive chunks above threshold
+                                  (~2 s) before firing, ignoring single short
+                                  horn blasts
+        • exclusion_zone        — module-level singleton (siren_exclusion.py):
+                                  when one side confirms a siren, all other
+                                  sides are suppressed for SIREN_EXCLUSION_WINDOW
+                                  seconds so the same ambulance passing through
+                                  is not counted as multiple independent events
     """
 
     def __init__(self, side: int, yamnet_model, class_names, siren_indices):
@@ -97,8 +107,13 @@ class SideListener:
             try:
                 audio = self._audio_q.get(timeout=1.0)
             except queue.Empty:
-                # Decay siren active flag even when no audio arrives
-                self.siren_active = (time.time() - self.last_detected) < SIREN_DECAY
+                # Decay siren active flag even when no audio arrives.
+                # Also release the exclusion zone if our own decay has expired.
+                if (time.time() - self.last_detected) >= SIREN_DECAY:
+                    self.siren_active = False
+                    exclusion_zone.release_if_owner(self.side)
+                else:
+                    self.siren_active = (time.time() - self.last_detected) < SIREN_DECAY
                 continue
 
             # ── Run YAMNet ────────────────────────────────────────────────────
@@ -110,9 +125,25 @@ class SideListener:
                 continue
 
             # ── Update running state ──────────────────────────────────────────
-            self.siren_score  = result["best_score"]
-            self.best_label   = result["best_label"]
-            self.siren_active = (time.time() - self.last_detected) < SIREN_DECAY
+            self.siren_score = result["best_score"]
+            self.best_label  = result["best_label"]
+
+            # Decay logic: siren_active stays True for SIREN_DECAY seconds
+            # after the last confirmed detection, UNLESS we are suppressed
+            # by the exclusion zone (another side's ambulance).
+            time_since_detected = time.time() - self.last_detected
+            within_decay        = time_since_detected < SIREN_DECAY
+            suppressed          = exclusion_zone.is_suppressed(self.side)
+            self.siren_active   = within_decay and not suppressed
+
+            # If our score is still above threshold and we own the zone, renew it
+            if result["best_score"] >= SIREN_THRESHOLD:
+                exclusion_zone.renew_if_owner(self.side, SIREN_EXCLUSION_WINDOW)
+            else:
+                # Score dropped below threshold; if our decay has also expired,
+                # release the zone so another side can claim it next time
+                if not within_decay:
+                    exclusion_zone.release_if_owner(self.side)
 
             # ── Blocklist check — suppress if top-1 is a horn/vehicle sound ──
             #    e.g. "Car horn", "Vehicle horn", "Air horn" → not an ambulance
@@ -144,11 +175,30 @@ class SideListener:
             if self._confirm_count >= SIREN_CONFIRM_CHUNKS:
                 now = time.time()
                 if (now - self.last_detected) >= SIREN_COOLDOWN:
-                    self.last_detected  = now
-                    is_new_alert        = True
-                    self.siren_active   = True
-                    self._confirm_count = 0   # reset after firing so next alert needs new streak
-                    self._print_alert(result)
+
+                    # ── Exclusion zone check ──────────────────────────────────
+                    # try_claim() returns True if:
+                    #   a) zone is free → we become the owner
+                    #   b) we already own the zone → renew and proceed
+                    # Returns False if another side owns the active window.
+                    if exclusion_zone.try_claim(self.side, SIREN_EXCLUSION_WINDOW):
+                        # We are the authoritative side — fire the alert
+                        self.last_detected  = now
+                        is_new_alert        = True
+                        self.siren_active   = True
+                        self._confirm_count = 0   # reset after firing
+                        self._print_alert(result)
+                    else:
+                        # Another side owns the zone — same ambulance is passing.
+                        # Reset confirmation streak so we don't re-fire the instant
+                        # the window expires; the ambulance has already been handled.
+                        self._confirm_count = 0
+                        ez = exclusion_zone.status()
+                        print(
+                            f"[Side {self.side}] Siren suppressed — "
+                            f"ambulance already claimed by Side {ez['owner_side']} "
+                            f"({ez['ttl']:.1f}s remaining in exclusion window)"
+                        )
 
             # ── Notify callback → pushes to dashboard + MQTT ─────────────────
             if self.on_siren_detected:
@@ -164,9 +214,10 @@ class SideListener:
                     print(f"[Side {self.side}] Callback error: {e}")
 
     def _print_alert(self, result: dict):
-        b = "=" * 55
+        ez  = exclusion_zone.status()
+        b   = "=" * 55
         print(f"\n{b}")
-        print(f"  🚨  SIREN — SIDE {self.side}")
+        print(f"  🚨  SIREN — SIDE {self.side}  [exclusion zone claimed for {SIREN_EXCLUSION_WINDOW:.0f}s]")
         print(f"  Match : {result['best_label']} ({result['best_score']:.3f})")
         print(f"  Top-1 : {result['top1_label']} ({result['top1_score']:.3f})")
         top3 = result.get("top3", [])
