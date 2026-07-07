@@ -1,36 +1,89 @@
 # 🚦 Smart Traffic System with Ambulance Siren Detection
 
-A real-time, AI-powered traffic management system that uses phone browsers (or ESP32 hardware mics) as microphones to detect emergency vehicle sirens and a YOLO vision model to count vehicles — then automatically controls traffic lights via MQTT to an ESP32.
+A real-time, AI-powered traffic management system that uses phone browsers (or ESP32 hardware mics) as microphones to detect emergency vehicle sirens, and a YOLO vision model to count vehicles — then automatically controls physical traffic lights via MQTT to an ESP32.
 
 **No app installs. No Termux. Phones just open a browser URL.**
 
 ---
 
-## How It Works
+## 📖 Overview
 
-The system manages a 4-way intersection. Each road side (1–4) has:
-- A **phone browser** or **ESP32 + INMP441 mic** streaming audio → detects ambulance sirens via YAMNet AI
-- A **road camera image** that YOLO scans → counts waiting vehicles
+Traditional traffic signals run on fixed timers regardless of actual road conditions. This project replaces that with a system that:
 
-Every traffic cycle the system:
-1. Counts vehicles on all 4 sides using YOLO
-2. Checks if any side has an active siren (YAMNet detection)
-3. Calculates a priority score for each side
-4. Picks the side that gets the green light
-5. Publishes the decision to an ESP32 via MQTT → physical lights change
-6. Shows everything live on a manager dashboard
+- **Counts vehicles** on each side of an intersection using computer vision (YOLOv8)
+- **Listens for sirens** using phone browsers or dedicated ESP32 hardware microphones, analyzed by an audio classification AI (YAMNet)
+- **Dynamically decides** which side gets a green signal based on traffic density, wait time, and emergency priority
+- **Controls real traffic lights** via a dedicated ESP32 microcontroller over MQTT
+- **Displays everything live** on a web dashboard for a traffic manager to monitor
 
-If a siren is detected, that side gets an immediate +1000 priority boost, overriding normal traffic logic.
-
-### System Architecture
-
-![System Architecture](smart_traffic_architecture.gif)
-
-> The diagram shows all three layers: **Hardware** (INMP441 + ESP32 mic nodes per side), **PC Server** (WebSocket hub, YAMNet listeners, YOLO detector, signal controller), and **Output** (HiveMQ MQTT broker → ESP32 traffic light controller → physical intersection).
+If a siren is detected, that side gets an immediate **+1000 priority boost**, overriding normal traffic logic and clearing a path for the emergency vehicle.
 
 ---
 
-## Project Structure
+## ✨ Key Features
+
+| Feature | Description |
+|---|---|
+| 🚗 **Vehicle Detection** | YOLOv8 counts cars, motorcycles, buses, and trucks per side |
+| 🚨 **Siren Detection** | YAMNet (Google's pre-trained audio AI) detects sirens from phone or hardware mic audio |
+| 🎯 **False-Positive Protection** | Blocklist filtering, consecutive-chunk confirmation, and cooldown timers prevent horns/noise from triggering false alerts |
+| 🔒 **Ambulance Exclusion Zone** | Prevents the same ambulance from being counted as multiple separate emergencies as it passes through the intersection |
+| 🧠 **Dynamic Signal Scoring** | Combines vehicle count, wait time, and siren priority into a single weighted score to decide the next green side |
+| 📡 **MQTT Communication** | Cloud-based (HiveMQ) messaging between the decision engine and the physical traffic light hardware |
+| 📱 **Phone-as-Mic Option** | No installs — any phone browser can act as a microphone source for a given side |
+| 🔌 **Hardware Audio Input** | ESP32 + INMP441 digital microphones stream live audio for always-on, dedicated deployments |
+| 🛰️ **mDNS Auto-Discovery** | ESP32 devices find the host PC automatically via `smarttraffic.local` — no manual IP configuration |
+| 🖥️ **Live Manager Dashboard** | Real-time web UI showing audio levels, siren scores, signal status, and event logs |
+| 🛡️ **Non-Blocking Failover** | If WiFi/MQTT drops, the physical traffic light falls back to a safe round-robin cycle instead of freezing |
+
+---
+
+## 🏗️ System Architecture
+
+![System Architecture](smart_traffic_architecture.gif)
+
+> The diagram shows all three layers: **Hardware** (phone browsers / INMP441 + ESP32 mic nodes per side), **PC Server** (WebSocket hub, YAMNet listeners, YOLO detector, signal controller), and **Output** (HiveMQ MQTT broker → ESP32 traffic light controller → physical intersection).
+
+```
+┌─────────────────┐     WiFi/WS      ┌──────────────────────┐
+│ Phone Browser /  │ ───────────────▶ │                      │
+│ ESP32 + Mic      │  audio stream    │                      │
+│  (Side 1–4)      │                  │      Host PC          │
+└─────────────────┘                  │  (Python backend)     │
+                                      │                       │
+┌─────────────────┐     WiFi/WS      │  ┌────────────────┐  │
+│  Road Camera /   │ ───────────────▶ │  │ YAMNet (siren)  │  │
+│  Image Feed      │  images          │  │ YOLOv8 (vehicle)│  │
+└─────────────────┘                  │  │ Signal Logic    │  │
+                                      │  └────────────────┘  │
+                                      └──────────┬───────────┘
+                                                 │ MQTT (HiveMQ Cloud, TLS 8883)
+                                                 ▼
+                                   ┌───────────────────────────┐
+                                   │  ESP32 Traffic Light       │
+                                   │  Controller (physical LEDs)│
+                                   └───────────────────────────┘
+
+                     ┌─────────────────────────────┐
+                     │  Manager Dashboard (Browser) │
+                     │  ws://<PC-IP>:8765 (live)     │
+                     └─────────────────────────────┘
+```
+
+### Data Flow
+
+1. **Audio capture** → phone browser mic or ESP32 + INMP441 records ambient sound at each road side and streams raw PCM audio over WebSocket.
+2. **Siren inference** → `SideListener` pulls audio chunks and runs YAMNet inference every ~1 second, checking for siren-class sounds.
+3. **False-positive filtering** → blocklist check, consecutive-chunk confirmation, and the shared exclusion zone validate that it's a real, new emergency.
+4. **Vehicle counting** → YOLOv8 processes road images and counts vehicles per side.
+5. **Decision engine** → `SignalController` combines vehicle count, wait time, and siren state into priority scores and picks the next green side.
+6. **Publish** → decision is published over MQTT (HiveMQ Cloud) to the ESP32 traffic light controller.
+7. **Physical control** → ESP32 controller switches real LEDs, with a non-blocking fallback if connectivity drops.
+8. **Dashboard** → all events (audio levels, siren alerts, signal decisions) are broadcast to the manager dashboard in real time.
+
+---
+
+## 🧩 Project Structure
 
 ```
 Smart-Traffic/
@@ -50,6 +103,7 @@ Smart-Traffic/
 ├── audio/
 │   ├── ws_server.py           ← WebSocket hub for phones, ESP32s, and managers
 │   ├── listeners.py           ← Per-side YAMNet siren detection engine
+│   ├── siren_exclusion.py     ← Shared ambulance exclusion zone (thread-safe)
 │   └── simulator.py           ← Fake audio generator for --simulate mode
 │
 ├── traffic/
@@ -69,7 +123,7 @@ Smart-Traffic/
 
 ---
 
-## Installation
+## ⚙️ Installation
 
 ```bash
 # Step 1 — Pin numpy FIRST (TensorFlow is incompatible with numpy 2.x)
@@ -88,9 +142,18 @@ pip install torch torchvision torchaudio
 
 > **Why numpy must be pinned first:** TensorFlow 2.x has a hard incompatibility with numpy 2.x. Installing `numpy==1.26.4` before tensorflow prevents pip from upgrading it automatically.
 
+### Hardware (optional — for always-on siren detection)
+- ESP32 dev board (×4, one per road side) + a 5th ESP32 for the traffic light controller
+- INMP441 I2S digital microphone (×4)
+- Traffic light LEDs (red/yellow/green ×4)
+- Stable WiFi network shared by host PC and all ESP32 units
+
+### Cloud
+- A free [HiveMQ Cloud](https://www.hivemq.com/mqtt-cloud-broker/) cluster (or any MQTT broker supporting TLS on port 8883)
+
 ---
 
-## Configuration (`config.py`)
+## 🔧 Configuration (`config.py`)
 
 This is the **only file you need to edit** for a normal deployment.
 
@@ -104,14 +167,17 @@ This is the **only file you need to edit** for a normal deployment.
 | `SIREN_CONFIRM_CHUNKS` | `2` | Consecutive chunks above threshold before alerting (~2 seconds) |
 | `SIREN_COOLDOWN` | `3.0s` | Minimum gap between repeated alerts on the same side |
 | `SIREN_DECAY` | `30.0s` | How long siren priority stays active after last detection |
+| `SIREN_EXCLUSION_WINDOW` | `30.0s` | Seconds other sides are suppressed after one side confirms a siren |
 | `SIREN_BLOCKLIST` | `["car horn", "vehicle horn", ...]` | Top-1 classes that suppress a siren alert |
 | `MODEL_NAME` | `"yolov8l.pt"` | YOLO model (`yolov8x.pt` for higher accuracy) |
 | `MIN_GREEN` / `MAX_GREEN` | `5s` / `25s` | Green light duration bounds |
+| `WEIGHT_TRAFFIC` / `WEIGHT_WAIT` | `1.0` / `2.5` | Weights for vehicle count vs. wait time in priority scoring |
 | `SIREN_PRIORITY_BOOST` | `1000.0` | Score bonus when a siren is detected |
+| `MAX_CONSECUTIVE` | `2` | Max consecutive green wins before a side's score is penalized (fairness) |
 
 ---
 
-## Running the System
+## 🚀 Running the System
 
 ### Step 1 — Add road images
 
@@ -148,9 +214,17 @@ ipconfig
 hostname -I
 ```
 
+### Testing without any hardware
+
+```bash
+python main.py --simulate
+```
+
+The simulator generates fake audio for all 4 sides — roughly a 4% chance per chunk of producing a wailing siren tone (a frequency-modulated 700–1500 Hz sine wave), otherwise quiet background noise. This exercises the full pipeline (YAMNet, priority boost, MQTT, dashboard) without any physical devices.
+
 ---
 
-## Connecting Audio Sources
+## 🎙️ Connecting Audio Sources
 
 ### Option A — Phone Browser (no install required)
 
@@ -161,7 +235,7 @@ All phones must be on the **same Wi-Fi network** as the PC.
 3. Enter a name and select a side number (1–4)
 4. Tap **Connect**, allow microphone access, then tap **Start Recording**
 
-Up to 5 phones can connect simultaneously. Each phone's side number determines which road side its audio is analysed for.
+Up to 5 phones can connect simultaneously. Each phone's side number determines which road side its audio is analyzed for.
 
 ### Option B — ESP32 + INMP441 Hardware Mic
 
@@ -188,7 +262,7 @@ The ESP32 discovers the PC automatically via mDNS (`smarttraffic.local`) — no 
 
 ---
 
-## Siren Detection Logic
+## 🧠 Siren Detection Logic
 
 Audio from phones or ESP32 units flows through this pipeline:
 
@@ -202,14 +276,15 @@ Phone mic / ESP32 INMP441
   → siren_active / siren_score updated
 ```
 
-False-positive suppression has two layers:
+False-positive suppression has three layers:
 
-1. **Blocklist check** — if YAMNet's top-1 class is `"Car horn"`, `"Vehicle horn"`, etc., the chunk is discarded without incrementing the confirmation counter.
+1. **Blocklist check** — if YAMNet's overall top-1 class is `"Car horn"`, `"Vehicle horn"`, etc., the chunk is discarded without incrementing the confirmation counter.
 2. **Consecutive-chunk confirmation** — `SIREN_CONFIRM_CHUNKS` (default 2) chunks must score above `SIREN_THRESHOLD` in a row before an alert fires. A single honk resets the counter to zero.
+3. **Exclusion zone** — once a side confirms a siren, it "claims" the alert for `SIREN_EXCLUSION_WINDOW` seconds, so the same ambulance passing through the intersection isn't logged as multiple separate emergencies as each side's mic picks it up in turn. The owning side can keep renewing this window as long as the siren stays audible, and any side is free to claim it again once the window expires.
 
 ---
 
-## Traffic Signal Logic
+## 🚦 Traffic Signal Logic
 
 Priority score per side each cycle:
 
@@ -231,17 +306,7 @@ if siren side wins: green_time = MIN_GREEN  (clear emergency fast)
 
 ---
 
-## Testing Without Phones
-
-```bash
-python main.py --simulate
-```
-
-The simulator generates fake audio for all 4 sides — ~4% chance per chunk of producing a wailing siren tone (frequency-modulated 700–1500 Hz sine wave), otherwise quiet background noise. This tests the full pipeline (YAMNet, priority boost, MQTT, dashboard) without any physical devices.
-
----
-
-## Manager Dashboard
+## 🖥️ Manager Dashboard
 
 The dashboard at `http://localhost:8001` shows:
 
@@ -257,7 +322,7 @@ The dashboard at `http://localhost:8001` shows:
 
 ---
 
-## MQTT Payloads
+## 📡 MQTT Payloads
 
 The PC publishes these topics every cycle. Both ESP32 firmware files use the same broker credentials from `config.py`.
 
@@ -283,7 +348,7 @@ The PC publishes these topics every cycle. Both ESP32 firmware files use the sam
 
 ---
 
-## ESP32 Traffic Light Controller
+## 🚥 ESP32 Traffic Light Controller
 
 This is a separate ESP32 (`esp32_traffic_light.ino`) that physically drives the traffic lights at the intersection. It is **different from the mic node** — one controls lights, the other streams audio.
 
@@ -321,7 +386,7 @@ RED → check for new MQTT command → next side
 
 ### Setup
 
-Edit only the top three lines of `esp32_traffic_light.ino`:
+Edit only the top few lines of `esp32_traffic_light.ino`:
 
 ```cpp
 const char* WIFI_SSID     = "your_wifi";
@@ -343,11 +408,20 @@ Flash via Arduino IDE with these libraries installed: `WiFi`, `WiFiClientSecure`
 | `BLINK_DELAY` | `500 ms` | Red blink interval during warning phase |
 | `COMMAND_TIMEOUT` | `8000 ms` | Seconds of silence before falling back to round-robin |
 
-> **Note on `green_time` units:** The firmware auto-detects whether the PC sent seconds or milliseconds. Values ≤ 30 are treated as seconds and converted (`× 1000`). Values > 30 are used as-is in milliseconds. The PC always sends seconds, so this is handled automatically.
+> **Note on `green_time` units:** the firmware auto-detects whether the PC sent seconds or milliseconds. Values ≤ 30 are treated as seconds and converted (`× 1000`). Values > 30 are used as-is in milliseconds. The PC always sends seconds, so this is handled automatically.
 
 ---
 
-## Troubleshooting
+## 🛡️ Failover Behavior
+
+The physical traffic light controller is designed to **never freeze**, even if the network fails:
+
+- WiFi and MQTT reconnection attempts run on non-blocking timers — they retry in the background without pausing the signal logic.
+- If no command has been received recently, the controller automatically falls back to a fixed round-robin cycle across all four sides, so the intersection is never stuck on all-red.
+
+---
+
+## 🔍 Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -365,3 +439,19 @@ Flash via Arduino IDE with these libraries installed: `WiFi`, `WiFiClientSecure`
 | Traffic light ESP32 not responding to commands | Verify `MQTT_USER/PASS` in `esp32_traffic_light.ino` matches `config.py`. Check it subscribed to `traffic/control` |
 | Intersection freezes at startup | Normal — the controller runs `allRed()` while connecting to WiFi and MQTT. Should clear within a few seconds |
 | Wrong side gets green | Double-check pin assignments in `esp32_traffic_light.ino` match your physical wiring |
+
+---
+
+## 🎓 Notes for Academic Submission
+
+This project was built iteratively, combining several well-established open-source AI models and libraries (YOLOv8, YAMNet) rather than training models from scratch. The core engineering contributions are:
+- The **decision-making architecture** combining vehicle count, wait time, and siren priority into a single scoring system
+- The **false-positive mitigation pipeline** for siren detection (blocklist + confirmation + exclusion zone)
+- The **hardware integration** (ESP32 + INMP441 + MQTT + mDNS) enabling a phone-free, always-on audio input alongside the phone-browser option
+- The **non-blocking failover design** ensuring the physical signal never freezes due to connectivity loss
+
+---
+
+## 📄 License
+
+This project is submitted as part of an academic capstone project (MCA, RCC Institute of Information Technology, Kolkata).
